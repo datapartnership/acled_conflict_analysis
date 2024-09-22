@@ -1,0 +1,41 @@
+name: docs
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-book:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+          cache: "pip"
+      - name: Install Dependencies
+        run: |
+          if [ -f pyproject.toml ]; then pip install ".[docs]"; fi
+      - name: Build Sphinx Documentation
+        run: |
+          sphinx-build docs _build/html -b html
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        if: job.status == 'success'
+        with:
+          path: "_build/html"
+
+  deploy-book:
+    needs: build-book
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
