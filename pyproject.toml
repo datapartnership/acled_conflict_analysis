@@ -28,7 +28,7 @@ dependencies = [
 	"h3>=3,<4",
 	"holoviews", 
 	"mobilkit>=0.2.8",
-	"numpy<2",
+	"numpy<3",
 	"palettable>=3.3.3",
 	"plotly",
 	"scikit-mobility>=1.3.1",
