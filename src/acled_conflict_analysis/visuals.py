@@ -145,7 +145,7 @@ def get_stacked_bar_chart(
     ).reset_index()
 
     # Initialize the figure
-    p2 = figure(x_axis_type="datetime", width=750, height=400, toolbar_location="above")
+    p2 = figure(x_axis_type="datetime", width=1000, height=400, toolbar_location="above")
 
     # Convert dataframe to ColumnDataSource
     source = ColumnDataSource(df_pivot)
@@ -245,7 +245,7 @@ def get_stacked_bar_chart(
     return layout
 
 def get_line_plot(
-    df,
+    dataframe,
     title,
     source,
     subtitle=None,
@@ -258,8 +258,8 @@ def get_line_plot(
 
     p2.add_layout(Legend(), "right")
 
-    for id, adm2 in enumerate(df[category].unique()):
-        df = df[df[category] == adm2][
+    for id, adm2 in enumerate(dataframe[category].unique()):
+        df = dataframe[dataframe[category] == adm2][
             [event_date, measure]
         ].reset_index(drop=True)
         p2.line(
@@ -314,13 +314,13 @@ def get_line_plot(
             p2.renderers.append(span)
 
             # Determine a base y position
-            base_y = max(df[measure])  # Adjust for visibility above the plot
+            base_y = max(dataframe[measure])  # Adjust for visibility above the plot
             # Find an appropriate y position that doesn't overlap
             y_position = base_y  # Default position
 
             # Adjust y_position if it overlaps with previous labels
             while y_position in used_y_positions:
-                y_position -= max(df[measure])/20  # Move down until it's free
+                y_position -= max(dataframe[measure])/20  # Move down until it's free
 
             used_y_positions.append(y_position)  # Store the used position
 
