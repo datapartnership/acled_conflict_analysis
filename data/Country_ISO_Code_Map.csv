@@ -1,0 +1,244 @@
+﻿COUNTRY,REGION,START_DATE,ISO_CODE
+Antarctica,Antarctica,44197,10
+Anguilla,Caribbean,43101,660
+Antigua and Barbuda,Caribbean,43101,28
+Aruba,Caribbean,43101,533
+Bahamas,Caribbean,43101,44
+Barbados,Caribbean,43101,52
+Bermuda,Caribbean,43101,60
+British Virgin Islands,Caribbean,43101,92
+Cayman Islands,Caribbean,43101,136
+Cuba,Caribbean,43101,192
+Curacao,Caribbean,43101,531
+Dominica,Caribbean,43101,212
+Dominican Republic,Caribbean,43101,214
+Grenada,Caribbean,43101,308
+Guadeloupe,Caribbean,43101,312
+Haiti,Caribbean,43101,332
+Jamaica,Caribbean,43101,388
+Martinique,Caribbean,43101,474
+Montserrat,Caribbean,43101,500
+Puerto Rico,Caribbean,43101,630
+Saint-Barthelemy,Caribbean,43101,652
+Saint Kitts and Nevis,Caribbean,43101,659
+Saint Lucia,Caribbean,43101,662
+Saint Vincent and Grenadines,Caribbean,43101,670
+Saint-Martin,Caribbean,43101,663
+Caribbean Netherlands,Caribbean,43101,535
+Sint Maarten,Caribbean,43101,534
+Trinidad and Tobago,Caribbean,43101,780
+Turks and Caicos Islands,Caribbean,43101,796
+"Virgin Islands, U.S.",Caribbean,43101,850
+Afghanistan,Caucasus and Central Asia,42736,4
+Armenia,Caucasus and Central Asia,43101,51
+Azerbaijan,Caucasus and Central Asia,43101,31
+Georgia,Caucasus and Central Asia,43101,268
+Kazakhstan,Caucasus and Central Asia,43101,398
+Kyrgyzstan,Caucasus and Central Asia,43101,417
+Tajikistan,Caucasus and Central Asia,43101,762
+Turkmenistan,Caucasus and Central Asia,43101,795
+Uzbekistan,Caucasus and Central Asia,43101,860
+Belize,Central America,43101,84
+Costa Rica,Central America,43101,188
+El Salvador,Central America,43101,222
+Guatemala,Central America,43101,320
+Honduras,Central America,43101,340
+Nicaragua,Central America,43101,558
+Panama,Central America,43101,591
+China,East Asia,43101,156
+Japan,East Asia,43101,392
+Mongolia,East Asia,43101,496
+North Korea,East Asia,43101,408
+South Korea,East Asia,43101,410
+Taiwan,East Asia,43101,158
+Burundi,Eastern Africa,35431,108
+Djibouti,Eastern Africa,35431,262
+Eritrea,Eastern Africa,35431,232
+Ethiopia,Eastern Africa,35431,231
+Kenya,Eastern Africa,35431,404
+Madagascar,Eastern Africa,35431,450
+Malawi,Eastern Africa,35431,454
+Mozambique,Eastern Africa,35431,508
+Rwanda,Eastern Africa,35431,646
+Somalia,Eastern Africa,35431,706
+South Sudan,Eastern Africa,40544,728
+Tanzania,Eastern Africa,35431,834
+Uganda,Eastern Africa,35431,800
+British Indian Ocean Territory,Eastern Africa,43101,86
+Comoros,Eastern Africa,43831,174
+Mauritius,Eastern Africa,43831,480
+Mayotte,Eastern Africa,43831,175
+Reunion,Eastern Africa,43831,638
+Seychelles,Eastern Africa,43831,690
+Albania,Europe,43101,8
+Belarus,Europe,43101,112
+Bosnia and Herzegovina,Europe,43101,70
+Bulgaria,Europe,43101,100
+Croatia,Europe,43101,191
+Cyprus,Europe,43101,196
+Greece,Europe,43101,300
+Kosovo,Europe,43101,0
+Moldova,Europe,43101,498
+Montenegro,Europe,43101,499
+North Macedonia,Europe,43101,807
+Romania,Europe,43101,642
+Russia,Europe,43101,643
+Serbia,Europe,43101,688
+Ukraine,Europe,43101,804
+Andorra,Europe,43831,20
+Austria,Europe,43831,40
+Bailiwick of Guernsey,Europe,43831,831
+Bailiwick of Jersey,Europe,43831,832
+Belgium,Europe,43831,56
+Czech Republic,Europe,43831,203
+Denmark,Europe,43831,208
+Estonia,Europe,43831,233
+Faroe Islands,Europe,43831,234
+Finland,Europe,43831,246
+France,Europe,43831,250
+Germany,Europe,43831,276
+Gibraltar,Europe,43831,292
+Greenland,Europe,43831,304
+Hungary,Europe,43831,348
+Iceland,Europe,43831,352
+Ireland,Europe,43831,372
+Isle of Man,Europe,43831,833
+Italy,Europe,43831,380
+Latvia,Europe,43831,428
+Liechtenstein,Europe,43831,438
+Lithuania,Europe,43831,440
+Luxembourg,Europe,43831,442
+Malta,Europe,43831,470
+Monaco,Europe,43831,492
+Netherlands,Europe,43831,528
+Norway,Europe,43831,578
+Poland,Europe,43831,616
+Portugal,Europe,43831,620
+San Marino,Europe,43831,674
+Slovakia,Europe,43831,703
+Slovenia,Europe,43831,705
+Spain,Europe,43831,724
+Sweden,Europe,43831,752
+Switzerland,Europe,43831,756
+United Kingdom,Europe,43831,826
+Vatican City,Europe,43831,336
+Angola,Middle Africa,35431,24
+Cameroon,Middle Africa,35431,120
+Central African Republic,Middle Africa,35431,140
+Chad,Middle Africa,35431,148
+Democratic Republic of Congo,Middle Africa,35431,180
+Equatorial Guinea,Middle Africa,35431,226
+Gabon,Middle Africa,35431,266
+Republic of Congo,Middle Africa,35431,178
+Sao Tome and Principe,Middle Africa,43831,678
+Bahrain,Middle East,42370,48
+Iran,Middle East,42370,364
+Iraq,Middle East,42370,368
+Israel,Middle East,42370,376
+Jordan,Middle East,42370,400
+Kuwait,Middle East,42370,414
+Lebanon,Middle East,42370,422
+Oman,Middle East,42370,512
+Palestine,Middle East,42370,275
+Qatar,Middle East,42370,634
+Saudi Arabia,Middle East,42005,682
+Syria,Middle East,42736,760
+Turkey,Middle East,42370,792
+United Arab Emirates,Middle East,42736,784
+Yemen,Middle East,42005,887
+Mexico,North America,43101,484
+United States,North America,43831,840
+Canada,North America,44197,124
+Saint Pierre and Miquelon,North America,44197,666
+Algeria,Northern Africa,35431,12
+Egypt,Northern Africa,35431,818
+Libya,Northern Africa,35431,434
+Morocco,Northern Africa,35431,504
+Sudan,Northern Africa,35431,729
+Tunisia,Northern Africa,35431,788
+American Samoa,Oceania,44197,16
+Australia,Oceania,44197,36
+Christmas Island,Oceania,44197,162
+Cocos (Keeling) Islands,Oceania,44197,166
+Cook Islands,Oceania,44197,184
+Fiji,Oceania,44197,242
+French Polynesia,Oceania,44197,258
+Guam,Oceania,44197,316
+Heard Island and McDonald Islands,Oceania,44197,334
+Kiribati,Oceania,44197,296
+Marshall Islands,Oceania,44197,584
+Micronesia,Oceania,44197,583
+Nauru,Oceania,44197,520
+New Caledonia,Oceania,44197,540
+New Zealand,Oceania,44197,554
+Niue,Oceania,44197,570
+Norfolk Island,Oceania,44197,574
+Northern Mariana Islands,Oceania,44197,580
+Palau,Oceania,44197,585
+Papua New Guinea,Oceania,44197,598
+Pitcairn,Oceania,44197,612
+Samoa,Oceania,44197,882
+Solomon Islands,Oceania,44197,90
+Tokelau,Oceania,44197,772
+Tonga,Oceania,44197,776
+Tuvalu,Oceania,44197,798
+United States Minor Outlying Islands,Oceania,44197,581
+Vanuatu,Oceania,44197,548
+Wallis and Futuna,Oceania,44197,876
+Argentina,South America,43101,32
+Bolivia,South America,43101,68
+Brazil,South America,43101,76
+Chile,South America,43101,152
+Colombia,South America,43101,170
+Ecuador,South America,43101,218
+Falkland Islands,South America,43101,238
+French Guiana,South America,43101,254
+Guyana,South America,43101,328
+Paraguay,South America,43101,600
+Peru,South America,43101,604
+Suriname,South America,43101,740
+Uruguay,South America,43101,858
+Venezuela,South America,43101,862
+South Georgia and the South Sandwich   Islands,South America,43101,239
+Bangladesh,South Asia,40179,50
+India,South Asia,42370,356
+Nepal,South Asia,40179,524
+Pakistan,South Asia,40179,586
+Sri Lanka,South Asia,40179,144
+Bhutan,South Asia,43831,64
+Maldives,South Asia,43831,462
+Cambodia,Southeast Asia,40179,116
+Indonesia,Southeast Asia,42005,360
+Laos,Southeast Asia,40179,418
+Malaysia,Southeast Asia,43101,458
+Myanmar,Southeast Asia,40179,104
+Philippines,Southeast Asia,42370,608
+Thailand,Southeast Asia,40179,764
+Vietnam,Southeast Asia,40179,704
+Brunei,Southeast Asia,43831,96
+East Timor,Southeast Asia,43831,626
+Singapore,Southeast Asia,43831,702
+Botswana,Southern Africa,35431,72
+eSwatini,Southern Africa,35431,748
+Lesotho,Southern Africa,35431,426
+Namibia,Southern Africa,35431,516
+South Africa,Southern Africa,35431,710
+Zambia,Southern Africa,35431,894
+Zimbabwe,Southern Africa,35431,716
+"Saint Helena, Ascension and Tristan da   Cunha",Southern Africa,43831,654
+Benin,Western Africa,35431,204
+Burkina Faso,Western Africa,35431,854
+Gambia,Western Africa,35431,270
+Ghana,Western Africa,35431,288
+Guinea,Western Africa,35431,324
+Guinea-Bissau,Western Africa,35431,624
+Ivory Coast,Western Africa,35431,384
+Liberia,Western Africa,35431,430
+Mali,Western Africa,35431,466
+Mauritania,Western Africa,35431,478
+Niger,Western Africa,35431,562
+Nigeria,Western Africa,35431,566
+Senegal,Western Africa,35431,686
+Sierra Leone,Western Africa,35431,694
+Togo,Western Africa,35431,768
+Cape Verde,Western Africa,43831,132

@@ -96,6 +96,6 @@ _build/
 .env
 
 # Project-specific 
-data/
+
 .jupyter/
 .ruff_cache/
