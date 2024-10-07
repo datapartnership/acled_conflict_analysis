@@ -435,7 +435,7 @@ def get_animated_map(data, country='India', threshold=100, measure='nrFatalities
                         <circle cx="15" cy="15" r="2" fill="red" />
                     </svg>
                 </td>
-                <td style="padding-left: 10px;">{measure_name} <= 25</td>
+                <td style="padding-left: 10px;">{measure_name} <= {threshold/2} </td>
             </tr>
             <tr>
                 <td style="padding: 5px;">
@@ -443,7 +443,7 @@ def get_animated_map(data, country='India', threshold=100, measure='nrFatalities
                         <circle cx="15" cy="15" r="10" fill="red" />
                     </svg>
                 </td>
-                <td style="padding-left: 10px;">{measure_name} > 25 and <= 50</td>
+                <td style="padding-left: 10px;">{measure_name} > {threshold/2} and <= {threshold}</td>
             </tr>
             <tr>
                 <td style="padding: 5px;">
@@ -451,7 +451,7 @@ def get_animated_map(data, country='India', threshold=100, measure='nrFatalities
                         <circle cx="15" cy="15" r="15" fill="red" />
                     </svg>
                 </td>
-                <td style="padding-left: 10px;">{measure_name} > 50</td>
+                <td style="padding-left: 10px;">{measure_name} > {threshold}</td>
             </tr>
         </table>
     </div>
