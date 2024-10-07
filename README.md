@@ -1,12 +1,16 @@
-# Python Package Template
+# Acled Conflict Analysis
 
 
-<!-- ![Development Status](https://img.shields.io/badge/status-in%20development-orange)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/datapartnership/mobilyze/main.svg)](https://results.pre-commit.ci/latest/github/datapartnership/mobilyze/main) -->
+![Development Status](https://img.shields.io/badge/status-in%20development-orange)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/datapartnership/acled-conflict/main.svg)](https://results.pre-commit.ci/latest/github/datapartnership/acled-conflict/main)
 
-## Overview
 
-This is a template to create python packages developed by the Data Lab Team for ease of reproducibility and reusability of analyses. 
+This is a package to extract, analyze and visualize ACLED data. 
+
+## Features
+
+
+
 
 <!-- ### Features
 

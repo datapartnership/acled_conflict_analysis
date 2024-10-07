@@ -3,11 +3,11 @@ requires = ["hatchling>=1.21.0", "hatch-vcs>=0.3.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mobilyze"
-description = "A Python package designed to analyze mobility data and measure and visualize movement intensity."
+name = "acled_conflict_analysis"
+description = "A Python package designed to extract, analyze and visualize ACLED conflict data."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
-keywords = ["mobility"]
+keywords = ["ACLED", "conflict"]
 authors = [{ name = "Development Data Group", email = "datalab@worldbank.org" }]
 classifiers = [
 	"Programming Language :: Python :: 3",
@@ -21,18 +21,9 @@ dynamic = ["version"]
 
 requires-python = ">=3.8"
 dependencies = [
-	"bokeh", 
-	"dask_geopandas",
-	"dask",
-	"datashader",
-	"h3>=3,<4",
-	"holoviews", 
-	"mobilkit>=0.2.8",
-	"numpy<2",
-	"palettable>=3.3.3",
-	"plotly",
-	"scikit-mobility>=1.3.1",
-	"shapely",
+	"geopandas",
+	"pandas",
+	"bokeh"
 ]
 [project.optional-dependencies]
 docs = [
@@ -42,9 +33,9 @@ docs = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/datapartnership/mobilyze"
-"Bug Reports" = "https://github.com/datapartnership/mobilyze/issues"
-"Source" = "https://github.com/datapartnership/mobilyze"
+"Homepage" = "https://github.com/datapartnership/acled_conflict_analysis"
+"Bug Reports" = "https://github.com/datapartnership/acled_conflict_analysis/issues"
+"Source" = "https://github.com/datapartnership/acled_conflict_analysis"
 
 [tool.codespell]
 skip = 'docs/_build,docs/bibliography.bib,*.png,*.gz,*.whl'
@@ -52,7 +43,7 @@ ignore-regex = '^\s*"image\/png":\s.*'
 ignore-words-list = "dec,"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mobilyze"]
+packages = ["src/acled_conflict_analysis"]
 
 [tool.hatch.version]
 source = "vcs"
