@@ -1,8 +1,19 @@
 import os
 import requests
 import pandas as pd
+import pkgutil
+import io
 
-iso_country_map = pd.read_csv('./data/Country_ISO_Code_Map.csv')
+def load_country_centroids():
+    # Access the file from the package using pkgutil
+    data = pkgutil.get_data('acled_conflict_analysis', 'data/Country_ISO_Code_Map.csv')
+    iso_country_map = pd.read_csv(io.BytesIO(data))
+    return iso_country_map
+
+iso_country_map = load_country_centroids()
+
+#iso_country_map = pd.read_csv('./data/Country_ISO_Code_Map.csv')
+
 
 def get_iso_code(country_names):
     iso_country = []

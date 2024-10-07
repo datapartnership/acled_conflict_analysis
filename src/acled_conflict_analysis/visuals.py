@@ -6,6 +6,9 @@ from bokeh.core.validation.warnings import EMPTY_LAYOUT
 import folium
 from folium.plugins import TimestampedGeoJson
 import pandas as pd
+import importlib.resources as pkg_resources
+
+
 
 # Use the silence function to ignore the EMPTY_LAYOUT warning
 silence(EMPTY_LAYOUT, True)
@@ -339,7 +342,11 @@ def get_line_plot(
 
 
 
-country_centroids = pd.read_csv('./data/countries_centroids.csv')
+def load_country_centroids():
+    # Access the file from the package using importlib.resources
+    with pkg_resources.open_text('acled_conflict_analysis.data', 'countries_centroids.csv') as file:
+        country_centroids = pd.read_csv(file)
+    return country_centroids
 
 def get_animated_map(data, country='India', threshold=100, measure='nrFatalities', animation_period='P1Y'):
 
@@ -348,7 +355,7 @@ def get_animated_map(data, country='India', threshold=100, measure='nrFatalities
     elif measure == 'nrEvents':
         measure_name = 'Events'
     
-
+    country_centroids = load_country_centroids()
     country_centroid = list(country_centroids[country_centroids['COUNTRY'] == country][['latitude', 'longitude']].iloc[0])
 
     # Create the base map
