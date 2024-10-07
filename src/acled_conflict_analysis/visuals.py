@@ -339,7 +339,7 @@ def get_line_plot(
 
 
 
-country_centroids = pd.read_csv('../data/countries_centroids.csv')
+country_centroids = pd.read_csv('./data/countries_centroids.csv')
 
 def get_animated_map(data, country='India', threshold=100, measure='nrFatalities', animation_period='P1Y'):
 

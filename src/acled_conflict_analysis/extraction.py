@@ -2,7 +2,7 @@ import os
 import requests
 import pandas as pd
 
-iso_country_map = pd.read_csv('../data/Country_ISO_Code_Map.csv')
+iso_country_map = pd.read_csv('./data/Country_ISO_Code_Map.csv')
 
 def get_iso_code(country_names):
     iso_country = []
