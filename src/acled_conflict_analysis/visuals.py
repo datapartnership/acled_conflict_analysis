@@ -426,7 +426,7 @@ def get_animated_map(data, country='India', threshold=100, measure='nrFatalities
     legend_html = f"""
     <div style="
         position: fixed;
-        bottom: 300px; left: 400px; width: 220px; height: auto; 
+        bottom: 300px; left: 500px; width: 220px; height: auto; 
         background-color: white; border:0px solid grey; z-index:9999; font-size:14px; padding: 10px;">
         <table>
             <tr>
