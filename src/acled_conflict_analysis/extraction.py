@@ -82,7 +82,7 @@ def acled_api(
         url += "&" + "&".join(other_query)
 
     # Making the GET request
-    response = requests.get(url)
+    response = requests.get(url, verify=False)
     if not response.ok:
         raise Exception(
             "GET request was unsuccessful. Status code: {}".format(response.status_code)
