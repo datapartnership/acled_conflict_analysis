@@ -51,7 +51,7 @@ def acled_api(
         )
 
     # Building the URL
-    url = "https://api.acleddata.com/acled/read/?key={}&email={}&limit=50000".format(
+    url = "https://api.acleddata.com/acled/read/?key={}&email={}&limit=200000".format(
         access_key, email_address
     )
 
