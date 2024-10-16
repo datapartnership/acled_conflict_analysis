@@ -24,8 +24,24 @@ color_palette = [
     "#872B90",  # Purple
     "#F78D28",  # Light Orange
     "#00A996",  # Teal-Ish Green
-
+    "#A6192E",  # Dark Red
+    "#004C97",  # Navy Blue
+    "#FFD100",  # Bright Yellow
+    "#7A5195",  # Lavender Purple
+    "#EF5675",  # Coral Red
+    "#955196",  # Light Purple
+    "#003F5C",  # Dark Navy
+    "#FFA600",  # Bright Orange
+    "#58B947",  # Lime Green
+    "#8D230F",  # Brick Red
+    "#FFB400",  # Gold
+    "#24693D",  # Forest Green
+    "#CC2525",  # Bright Red
+    "#6A4C93",  # Violet
+    "#1C3144",  # Dark Slate Blue
+    "#C7EFCF",  # Mint Green
 ]
+
 
 
 def get_bar_chart(
