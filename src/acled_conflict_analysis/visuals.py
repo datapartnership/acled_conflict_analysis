@@ -168,14 +168,6 @@ def get_stacked_bar_chart(
     # Convert dataframe to ColumnDataSource
     source = ColumnDataSource(df_pivot)
 
-    p2 = figure(
-        x_axis_type="datetime",
-        width=750,
-        height=400,
-        title=title,
-        toolbar_location="above",
-    )
-
     # Stack bars
     renderers = p2.vbar_stack(
         stackers=categories,
@@ -201,13 +193,13 @@ def get_stacked_bar_chart(
         p2.title.text = subtitle
 
     # Create title and subtitle text using separate figures
-    title_fig = figure(title=title, toolbar_location=None, width=750, height=40)
+    title_fig = figure(title=title, toolbar_location=None, width=width, height=40)
     title_fig.title.align = "left"
     title_fig.title.text_font_size = "14pt"
     title_fig.border_fill_alpha = 0
     title_fig.outline_line_color = None
 
-    sub_title_fig = figure(title=source_text, toolbar_location=None, width=750, height=80)
+    sub_title_fig = figure(title=source_text, toolbar_location=None, width=width, height=80)
     sub_title_fig.title.align = "left"
     sub_title_fig.title.text_font_size = "10pt"
     sub_title_fig.title.text_font_style = "normal"
