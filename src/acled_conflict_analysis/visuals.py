@@ -155,13 +155,15 @@ def get_stacked_bar_chart(
     events_dict=None,
     category_column="event_type",
     measure="nrEvents",
+    width=1000,
+    height=400
 ):
     df_pivot = dataframe.pivot_table(
         index=date_column, columns=category_column, values=measure, fill_value=0
     ).reset_index()
 
     # Initialize the figure
-    p2 = figure(x_axis_type="datetime", width=1000, height=400, toolbar_location="above")
+    p2 = figure(x_axis_type="datetime", width=width, height=height, toolbar_location="above")
 
     # Convert dataframe to ColumnDataSource
     source = ColumnDataSource(df_pivot)
