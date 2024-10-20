@@ -22,18 +22,7 @@ def get_acled_by_group(
         freq=None,
         date_column='event_date'
 ):
-    conflict_grouped = data[
-    [
-        "country",
-        "latitude",
-        "longitude",
-        "event_type",
-        "sub_event_type",
-        "location",
-        "event_date",
-        "fatalities",
-    ]
-]
+    conflict_grouped = data
     if freq:
         conflict_grouped = (
         conflict_grouped.groupby([pd.Grouper(key="event_date", freq=freq)]+columns)["fatalities"]
