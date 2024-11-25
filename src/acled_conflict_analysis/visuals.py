@@ -53,7 +53,8 @@ def get_bar_chart(
     category=None,
     color_code=None,
     category_value=None,
-    events_dict=None
+    events_dict=None,
+    width=86400000 * 1.5
 ):
     # Initialize the figure
     p2 = figure(x_axis_type="datetime", width=750, height=400, toolbar_location="above")
@@ -74,7 +75,7 @@ def get_bar_chart(
     p2.vbar(
         x="event_date",
         top=measure,
-        width=86400000 * 1.5,
+        width=width,
         source=category_source,
         color=color_code,
     )
@@ -313,9 +314,9 @@ def get_line_plot(
         used_y_positions = []
 
             
-        for index, (event_date, label) in enumerate(events_dict.items()):
+        for index, (event_date_value, label_text) in enumerate(events_dict.items()):
             span = Span(
-                location=event_date,
+                location=event_date_value,
                 dimension="height",
                 line_color='#C6C6C6',
                 line_width=2,
@@ -337,7 +338,7 @@ def get_line_plot(
             event_label = Label(
                 x=event_date,
                 y=y_position,
-                text=label,
+                text=label_text,
                 text_color="black",
                 text_font_size="10pt",
                 background_fill_color="grey",
