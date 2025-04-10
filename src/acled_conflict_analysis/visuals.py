@@ -351,6 +351,100 @@ def get_line_plot(
 
     return layout
 
+import folium
+from folium import FeatureGroup
+import pandas as pd
+from datetime import datetime
+
+def get_animated_map(data, country='India', threshold=100, measure='nrFatalities', animation_period='P1Y', fill_color = 'red', outline_color = 'black'):
+    """
+    Create a Folium map with different layers for each month or year, with radio buttons to toggle between layers.
+    
+    Parameters
+    ----------
+    data: pandas.DataFrame
+        DataFrame containing the data with 'latitude', 'longitude', and event information (including 'event_date').
+    
+    country: str
+        Name of the country to center the map (defaults to 'India').
+    
+    threshold: int
+        The threshold for scaling the marker size (defaults to 100).
+    
+    measure: str
+        The measure to show on the map ('nrFatalities' or 'nrEvents').
+    
+    animation_period: str
+        Period of time to group by ('P1Y' for year or 'P1M' for month).
+    
+    Returns
+    -------
+    folium.Map
+        Folium map with layers for each period (month or year).
+    """
+    
+    if measure == 'nrFatalities':
+        measure_name = 'Fatalities'
+    elif measure == 'nrEvents':
+        measure_name = 'Events'
+
+    # Default location (for India)
+    country_centroids = load_country_centroids()
+    country_centroid = list(country_centroids[country_centroids['COUNTRY'] == country][['latitude', 'longitude']].iloc[0])
+
+    # Create the base map
+    m = folium.Map(location=country_centroid, zoom_start=5, tiles="CartoDB positron", 
+                attr="Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.")
+
+    max_radius = 20  # Maximum size for large numbers
+    min_radius = 2   # Minimum size for small numbers
+    threshold = threshold   # Beyond this number, bubble size stops growing
+
+    # Scaling function for bubble size
+    def scale_bubble_size(value, max_radius):
+        if value > threshold:
+            return max_radius
+        elif value > 25:  # Between 25 and threshold
+            return max_radius / 2
+        else:
+            return min_radius
+
+    # Group the data by month or year
+    if animation_period == 'P1Y':
+        data['year'] = data['event_date'].dt.year
+        grouped = data.groupby('year')
+    else:
+        data['month'] = data['event_date'].dt.to_period('M')
+        grouped = data.groupby('month')
+
+    # Create FeatureGroups for each time period (month/year)
+    time_layers = {}
+
+    for period, group in grouped:
+        feature_group = FeatureGroup(name=str(period))  # Name the layer by period (e.g., Year or Month)
+
+        for _, row in group.iterrows():
+            scaled_radius = scale_bubble_size(row[measure], max_radius)
+
+            # Create marker for each event
+            folium.CircleMarker(
+                location=[row['latitude'], row['longitude']],
+                radius=scaled_radius,
+                color=outline_color,
+                fill=True,
+                fill_color=fill_color,
+                fill_opacity=0.6,
+                popup=f"{measure_name}: {row[measure]}<br>Date: {row['event_date'].strftime('%Y-%m-%d')}"
+            ).add_to(feature_group)
+
+        # Add the feature group (layer) to the map
+        feature_group.add_to(m)
+        time_layers[str(period)] = feature_group
+    
+    # Add a LayerControl so users can toggle between time layers
+    folium.LayerControl().add_to(m)
+
+    return m
 
 
 def load_country_centroids():
@@ -359,7 +453,7 @@ def load_country_centroids():
         country_centroids = pd.read_csv(file)
     return country_centroids
 
-def get_animated_map(data, country='India', threshold=100, measure='nrFatalities', animation_period='P1Y'):
+def get_cumulative_animated_map(data, country='India', threshold=100, measure='nrFatalities', animation_period='P1Y'):
 
     if measure == 'nrFatalities':
         measure_name = 'Fatalities'
@@ -473,5 +567,7 @@ def get_animated_map(data, country='India', threshold=100, measure='nrFatalities
 
     # Show the map
     return m
+
+
 
 
