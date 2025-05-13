@@ -3,6 +3,84 @@ import requests
 import pandas as pd
 import pkgutil
 import io
+import json
+import getpass
+
+def save_acled_credentials(email, api_key=None):
+    """
+    Save ACLED credentials (email and API key) to a JSON file.
+    
+    Args:
+        email (str): Your registered email address
+        api_key (str, optional): Your API key. If None, will prompt for it.
+    
+    Returns:
+        bool: True if credentials were saved successfully, False otherwise
+    """
+    # Define the location of the credentials file
+    if os.name == 'nt':  # Windows
+        config_dir = os.path.join(os.environ['USERPROFILE'], '.config', 'acled')
+        config_path = os.path.join(config_dir, 'credentials.json')
+    else:  # macOS/Linux
+        config_dir = os.path.expanduser('~/.config/acled')
+        config_path = os.path.expanduser('~/.config/acled/credentials.json')
+    
+    # Create the directory if it doesn't exist
+    os.makedirs(config_dir, exist_ok=True)
+    
+    # If API key not provided, prompt for it
+    if api_key is None:
+        api_key = getpass.getpass("Enter your ACLED API key: ")
+    
+    # Store values
+    try:
+        credentials = {'email': email, 'api_key': api_key}
+        with open(config_path, 'w') as file:
+            json.dump(credentials, file)
+        print(f"Credentials saved to {config_path}")
+        return True
+    except Exception as e:
+        print(f"Error saving credentials: {e}")
+        return False
+    
+def get_acled_credentials():
+    """
+    Get the ACLED email and API key from the configuration file.
+    If not found, prompt the user and save the credentials.
+    
+    Returns:
+        tuple: (email, api_key)
+    """
+    # Define the location of the credentials file
+    if os.name == 'nt':  # Windows
+        config_path = os.path.join(os.environ['USERPROFILE'], '.config', 'acled', 'credentials.json')
+    else:  # macOS/Linux
+        config_path = os.path.expanduser('~/.config/acled/credentials.json')
+    
+    # Check if the file exists
+    if os.path.exists(config_path):
+        # Read the credentials from the file
+        try:
+            with open(config_path, 'r') as file:
+                credentials = json.load(file)
+                email = credentials.get('email')
+                api_key = credentials.get('api_key')
+                
+                # Verify we have both values
+                if email and api_key:
+                    return email, api_key
+        except (json.JSONDecodeError, KeyError, IOError) as e:
+            print(f"Error reading credentials: {e}")
+    
+    # If we get here, we need to prompt for credentials
+    print("ACLED API requires both an email and API key.")
+    email = input("Enter your registered email: ")
+    api_key = getpass.getpass("Enter your ACLED API key: ")
+    
+    # Save the credentials
+    save_acled_credentials(email, api_key)
+    
+    return email, api_key
 
 def load_country_centroids():
     # Access the file from the package using pkgutil
