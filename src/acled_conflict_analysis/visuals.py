@@ -692,12 +692,26 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
             else:
                 measures[measure_name]['size_factor'] = 5
     
-    # Create figure and axes
-    fig, axes = plt.subplots(1, len(categories), figsize=figsize)
+    # Create figure and axes with gridspec for equal distribution
+    fig = plt.figure(figsize=figsize)
+    gs = fig.add_gridspec(1, len(categories), wspace=0.05, hspace=0.05)
+    axes = []
     
+    # Create axes with equal size and distribution
+    for i in range(len(categories)):
+        axes.append(fig.add_subplot(gs[0, i]))
+        # Immediately disable all ticks and spines for each subplot
+        axes[i].set_xticks([])
+        axes[i].set_yticks([])
+        axes[i].set_xticklabels([])
+        axes[i].set_yticklabels([])
+        axes[i].tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+        for spine in axes[i].spines.values():
+            spine.set_visible(False)
+        
     # Handle single subplot case
     if len(categories) == 1:
-        axes = [axes]
+        axes = [axes[0]]
     
     # Create a deep copy of the dataframe to avoid SettingWithCopyWarning
     plot_data = data.copy(deep=True)
@@ -819,6 +833,10 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
     for idx, category in enumerate(categories):
         ax = axes[idx]
         
+        # Ensure all spines are hidden for all plots
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+            
         # Plot boundary if provided
         if boundary_gdf is not None:
             boundary_gdf.boundary.plot(ax=ax, color='lightgrey', alpha=0.5, linewidth=1)
@@ -836,6 +854,7 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
             cmap = measure_opts['cmap']
             alpha = measure_opts['alpha']
             size_factor = measure_opts['size_factor']
+            label_name = measure_opts['label_name']
             
             # Skip if no data (prevents empty plots)
             if len(category_data) == 0 or not category_data[measure_name].notna().any():
@@ -854,15 +873,28 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
                 )
                 
             elif plot_type == 'size' or (plot_type == 'both' and aggregation in ['latlon', 'admin']):
-                # Calculate marker sizes with a better scaling approach
-                sizes = np.sqrt((category_data[measure_name] - vmin) / (vmax - vmin + 1e-10) + 0.1) * size_factor
+                # Use a more controlled approach to sizing that works better with outliers
+                # Apply a log-based transformation to handle large value ranges
+                if vmin < vmax:  # Only if we have a valid range
+                    # Add a small constant to handle zeros
+                    epsilon = (vmax - vmin) * 0.01 if vmax > vmin else 0.1
+                    
+                    # Get log-transformed values
+                    log_vals = np.log1p((category_data[measure_name] - vmin) + epsilon)
+                    log_max = np.log1p((vmax - vmin) + epsilon)
+                    
+                    # Scale to a reasonable marker size range (3 to 15)
+                    sizes = 3 + (log_vals / log_max) * 12
+                else:
+                    # Fallback for when all values are the same
+                    sizes = np.ones(len(category_data)) * 5
                 
                 # Plot with bubble sizes
                 category_data.plot(
                     ax=ax,
                     color=plt.cm.get_cmap(cmap)(0.6),  # Use a fixed color from the colormap
                     alpha=alpha,
-                    markersize=sizes * 20  # Scale for better visibility
+                    markersize=sizes
                 )
                 
             elif plot_type == 'both':
@@ -882,8 +914,11 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
                             # Get the centroid for the marker placement
                             centroid = row.geometry.centroid
                             
-                            # Scale marker size based on normalized value
-                            marker_size = np.sqrt(normalized_value + 0.1) * size_factor * 20
+                            # Apply log-based sizing for better distribution of sizes
+                            epsilon = (vmax - vmin) * 0.01 if vmax > vmin else 0.1
+                            log_val = np.log1p((value - vmin) + epsilon)
+                            log_max = np.log1p((vmax - vmin) + epsilon)
+                            marker_size = 3 + (log_val / log_max) * 12
                             
                             ax.plot(
                                 centroid.x, centroid.y,
@@ -900,8 +935,11 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
                             normalized_value = (value - vmin) / (vmax - vmin + 1e-10)
                             color = plt.cm.get_cmap(cmap)(normalized_value)
                             
-                            # Scale marker size based on normalized value
-                            marker_size = np.sqrt(normalized_value + 0.1) * size_factor * 20
+                            # Apply log-based sizing for better distribution of sizes
+                            epsilon = (vmax - vmin) * 0.01 if vmax > vmin else 0.1
+                            log_val = np.log1p((value - vmin) + epsilon)
+                            log_max = np.log1p((vmax - vmin) + epsilon)
+                            marker_size = 3 + (log_val / log_max) * 12
                             
                             ax.plot(
                                 row.geometry.x, row.geometry.y,
@@ -932,7 +970,7 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
                                         facecolor=colors[i],
                                         edgecolor='none',
                                         alpha=measure_opts['alpha'],
-                                        label=f"{measure_name} Q{i+1} ({bin_edges[i]:.2f}-{bin_edges[i+1]:.2f})"
+                                        label=f"{label_name} Q{i+1} ({bin_edges[i]:.2f}-{bin_edges[i+1]:.2f})"
                                     )
                                 )
                 
@@ -940,15 +978,16 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
                     # Create size legend with better size representation
                     vmin = measure_opts['vmin']
                     vmax = measure_opts['vmax']
-                    size_factor = measure_opts['size_factor']
                     
-                    # Create evenly spaced values between min and max
+                    # Create evenly spaced values between min and max for a better legend
                     size_values = np.linspace(vmin, vmax, 4)
                     size_labels = [f"{measure_name}: {val:.2f}" for val in size_values]
                     
                     # Calculate marker sizes consistently with the plotting approach
-                    marker_sizes = [np.sqrt((val - vmin) / (vmax - vmin + 1e-10) + 0.1) * size_factor * 20 
-                                   for val in size_values]
+                    epsilon = (vmax - vmin) * 0.01 if vmax > vmin else 0.1
+                    log_values = [np.log1p((val - vmin) + epsilon) for val in size_values]
+                    log_max = np.log1p((vmax - vmin) + epsilon)
+                    marker_sizes = [3 + (log_val / log_max) * 12 for log_val in log_values]
                     
                     for ms, label in zip(marker_sizes, size_labels):
                         legend_items.append(
@@ -957,48 +996,46 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
                                 marker='o',
                                 color='w',
                                 markerfacecolor=plt.cm.get_cmap(measure_opts['cmap'])(0.6),
-                                markersize=ms/2,  # Adjust for legend display
+                                markersize=ms,
                                 alpha=measure_opts['alpha'],
                                 label=label
                             )
                         )
-            
-            # Add legend with appropriate positioning
-            if legend_items:
-                legend_cols = min(4, len(legend_items))
-                if len(legend_items) <= 4:
-                    legend = ax.legend(
-                        handles=legend_items,
-                        loc='lower right',
-                        frameon=False,
-                        ncol=legend_cols
-                    )
-                else:
-                    # For many legend items, place at bottom of figure
-                    legend = fig.legend(
-                        handles=legend_items,
-                        loc='lower center',
-                        frameon=False,
-                        ncol=legend_cols,
-                        bbox_to_anchor=(0.5, 0.01)
-                    )
+
+            # Set title and clean up axes - position the title at the top
+        ax.set_title(category, y=1.0, pad=10)
         
-        # Set title and clean up axes
-        ax.set_title(category)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_visible(False)
+        # Ensure all ticks and spines are completely removed
         ax.set_xticks([])
         ax.set_yticks([])
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.tick_params(left=False, right=False, bottom=False, top=False,
+                    labelleft=False, labelright=False, labelbottom=False, labeltop=False)
+        
+        # Hide all spines
+        for spine in ax.spines.values():
+            spine.set_visible(False)
     
+            
+# Add legend with appropriate positioning
+    if legend_items:
+        legend_cols = min(4, len(legend_items))
+        # Place legend at the bottom of the figure
+        legend = fig.legend(
+            handles=legend_items,
+            loc='lower center',
+            frameon=False,
+            ncol=legend_cols,
+            bbox_to_anchor=(0.5, 0.02)
+        )
+        
+        
     # Set main title
-    plt.suptitle(title, fontsize=16)
+    fig.suptitle(title, fontsize=16, y=0.95)
     
-    # Adjust layout
-    if legend_items and len(legend_items) > 4:
-        plt.tight_layout(rect=[0, 0.1, 1, 0.95])  # Make room for legend and title
-    else:
-        plt.tight_layout()
+    # Adjust layout to ensure equal spacing and size
+    # Always leave space at bottom for legend
+    plt.subplots_adjust(bottom=0.2, top=0.85, wspace=0.05)
     
     return fig, axes
