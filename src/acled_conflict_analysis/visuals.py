@@ -636,6 +636,9 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
     from matplotlib.patches import Patch
     from matplotlib.lines import Line2D
     from matplotlib.colors import Normalize
+    from datetime import datetime
+
+    font_choice = 'Arial'
     
     # Default values
     if measures is None:
@@ -691,6 +694,10 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
                 measures[measure_name]['size_factor'] = 100  # Base factor, will be scaled by data range later
             else:
                 measures[measure_name]['size_factor'] = 5
+                
+        # Set default label name if not specified
+        if 'label_name' not in measures[measure_name]:
+            measures[measure_name]['label_name'] = measure_name
     
     # Create figure and axes with gridspec for equal distribution
     fig = plt.figure(figsize=figsize)
@@ -854,7 +861,7 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
             cmap = measure_opts['cmap']
             alpha = measure_opts['alpha']
             size_factor = measure_opts['size_factor']
-            label_name = measure_opts['label_name']
+            label_name = measure_opts.get('label_name', measure_name)
             
             # Skip if no data (prevents empty plots)
             if len(category_data) == 0 or not category_data[measure_name].notna().any():
@@ -1002,8 +1009,8 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
                             )
                         )
 
-            # Set title and clean up axes - position the title at the top
-        ax.set_title(category, y=1.0, pad=10)
+        # Set title and clean up axes - position the title at the top
+        ax.set_title(category, y=1.0, pad=10, fontfamily=font_choice)
         
         # Ensure all ticks and spines are completely removed
         ax.set_xticks([])
@@ -1018,7 +1025,7 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
             spine.set_visible(False)
     
             
-# Add legend with appropriate positioning
+    # Add legend with appropriate positioning
     if legend_items:
         legend_cols = min(4, len(legend_items))
         # Place legend at the bottom of the figure
@@ -1027,15 +1034,20 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
             loc='lower center',
             frameon=False,
             ncol=legend_cols,
-            bbox_to_anchor=(0.5, 0.02)
+            bbox_to_anchor=(0.5, 0.12)  # Moved up slightly to make room for source text
         )
         
-        
     # Set main title
-    fig.suptitle(title, fontsize=16, y=0.95)
+    fig.suptitle(title, fontsize=16, y=0.95, fontfamily = font_choice, fontweight='bold')
+    
+    # Add source text box at the bottom
+    today = datetime.now().strftime("%B %d, %Y")
+    source_text = f"Source: ACLED. Accessed: {today}"
+    fig.text(0.3, 0.02, source_text, ha='center', fontsize=9, fontfamily=font_choice
+             )
     
     # Adjust layout to ensure equal spacing and size
-    # Always leave space at bottom for legend
-    plt.subplots_adjust(bottom=0.2, top=0.85, wspace=0.05)
+    # Leave more space at bottom for legend and source text
+    plt.subplots_adjust(bottom=0.25, top=0.85, wspace=0.05)
     
     return fig, axes
