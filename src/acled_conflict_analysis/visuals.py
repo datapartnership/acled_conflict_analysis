@@ -846,7 +846,7 @@ def create_comparative_maps(data, title, measures=None, aggregation='h3',
             
         # Plot boundary if provided
         if boundary_gdf is not None:
-            boundary_gdf.boundary.plot(ax=ax, color='lightgrey', alpha=0.5, linewidth=1)
+            boundary_gdf.boundary.plot(ax=ax, color='lightgrey', alpha=0.7, linewidth=1)
         
         # Filter data for this category
         if category != 'All Data' or 'category' in plot_data.columns:
