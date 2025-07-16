@@ -277,3 +277,54 @@ def get_acled_by_admin(
     acled_adm.rename(columns={"sum": "nrFatalities", "count": "nrEvents"}, inplace=True)
 
     return acled_adm.reset_index()
+
+def calculate_conflict_index(df: pd.DataFrame, arbitrary_constant: float = 1.0) -> pd.DataFrame:
+    """
+    Calculates the Conflict Intensity Index for a DataFrame and adds it as a new column.
+
+    The conflict intensity index is calculated as the geometric mean of conflict events
+    and fatalities, with an adjustment to handle zero values.
+
+    Formula:
+    $$ \\text{Conflict Intensity Index} = \\sqrt{(\\text{nrEvents}) \\times (\\text{nrFatalities} + \\text{arbitrary_constant})} $$
+
+    Where:
+    - $\\text{nrEvents}$ is the number of conflict events in a given period and location.
+    - $\\text{nrFatalities}$ is the number of fatalities from conflicts in the same period and location.
+    - $\\text{arbitrary_constant}$ is a constant added to fatalities to ensure the index is defined
+      even when fatalities are zero. This is arbitrary and is done just to account for 0 values of fatalities.
+
+    This index provides a balanced measure that accounts for both the frequency of conflicts
+    and their severity. Compared to arithmetic means, the geometric mean reduces the
+    influence of extreme values in either component (conflict events + fatalities).
+    Areas with both high events and high fatalities will have higher index values
+    than areas with many events but few fatalities or vice versa.
+
+    Conflict index is calculated at the location and then average is taken over time
+    (across the three time periods). This is to preserve the integrity of the conflict
+    index in that specific location.
+
+    Args:
+        df (pd.DataFrame): A DataFrame expected to contain 'nrEvents' and 'nrFatalities' columns.
+        arbitrary_constant (float): A constant to be added to 'nrFatalities' before
+                                    calculating the geometric mean. Defaults to 1.0.
+
+    Returns:
+        pd.DataFrame: The original pandas DataFrame with a new column named
+                      'conflict_intensity_index' containing the calculated values.
+                      Returns an empty DataFrame if 'nrEvents' or 'nrFatalities' columns are missing.
+    """
+    # Create a copy of the DataFrame to avoid modifying the original DataFrame directly
+    df_copy = df.copy()
+
+    # Check if the required columns exist in the DataFrame
+    if 'nrEvents' not in df_copy.columns or 'nrFatalities' not in df_copy.columns:
+        print("Error: DataFrame must contain 'nrEvents' and 'nrFatalities' columns.")
+        return pd.DataFrame() # Return an empty DataFrame if columns are missing
+
+    # Calculate the conflict intensity index
+    df_copy['conflict_intensity_index'] = np.sqrt(
+        df_copy['nrEvents'] * (df_copy['nrFatalities'] + arbitrary_constant)
+    )
+
+    return df_copy
