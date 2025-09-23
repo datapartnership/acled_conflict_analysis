@@ -148,7 +148,7 @@ def acled_api(
     }
     
     if country_iso:
-        params["country"] = ":OR:country=".join(countries)  # Use country names, not ISO codes
+        params["iso"] = "|".join(str(iso) for iso in country_iso)
     
     if region:
         params["region"] = "|".join(str(region) for region in region)
@@ -281,7 +281,7 @@ def acled_api_with_credentials(
     }
     
     if country_iso:
-        params["country"] = ":OR:country=".join(countries)  # Use country names, not ISO codes
+        params["iso"] = "|".join(str(iso) for iso in country_iso)
     
     if region:
         params["region"] = "|".join(str(region) for region in region)
