@@ -25,7 +25,8 @@ Dependencies:
 """
 
 from bokeh.plotting import figure, ColumnDataSource
-from bokeh.models import Legend, Span, Label
+from bokeh.models import Legend, Span, Label, HoverTool
+from bokeh.palettes import Category10
 from bokeh.layouts import column
 from bokeh.core.validation import silence
 from bokeh.core.validation.warnings import EMPTY_LAYOUT
@@ -141,6 +142,13 @@ def get_bar_chart(
         source=category_source,
         color=color_code,
     )
+
+    # Add HoverTool for interactivity
+    hover = HoverTool(tooltips=[
+        ("Date", "@event_date{%F}"),
+        (measure.replace('_', ' ').title(), f"@{measure}")
+    ], formatters={'@event_date': 'datetime'})
+    p2.add_tools(hover)
 
     # Configure legend
     p2.legend.click_policy = "hide"
@@ -274,6 +282,14 @@ def get_stacked_bar_chart(
         color=colors,
         source=source,
     )
+
+    # Add HoverTool for interactivity
+    hover = HoverTool(tooltips=[
+        ("Date", f"@{date_column}{{%F}}"),
+        ("Category", "$name"),
+        ("Value", "$~{0.0}")
+    ], formatters={f'@{date_column}': 'datetime'})
+    p2.add_tools(hover)
 
     # Configure legend
     legend = Legend(
