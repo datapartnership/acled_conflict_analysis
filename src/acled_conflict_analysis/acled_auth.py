@@ -251,7 +251,7 @@ def get_oauth_token():
         "client_id": "acled"
     }
     
-    print(f"🔐 Authenticating with ACLED API for: {email}")
+    print(f"🔐 Authenticating with ACLED API for : {email}")
     
     try:
         # Make the POST request (disable SSL verification for corporate networks)

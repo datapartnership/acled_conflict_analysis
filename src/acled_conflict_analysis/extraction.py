@@ -91,7 +91,6 @@ def load_country_centroids():
 
 iso_country_map = load_country_centroids()
 
-#iso_country_map = pd.read_csv('./data/Country_ISO_Code_Map.csv')
 
 
 def get_iso_code(country_names):
@@ -225,7 +224,7 @@ def acled_api(
     else:
         # Assume the whole response is the data
         records = data if isinstance(data, list) else [data]
-    
+
     print(f"✅ Successfully retrieved {len(records)} records")
     return pd.DataFrame(records)
 
