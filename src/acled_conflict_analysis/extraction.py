@@ -277,7 +277,7 @@ def acled_api_with_credentials(
     # Set up parameters
     params = {
         "_format": "json",
-        "limit": 200000
+        "limit": 400000
     }
     
     if country_iso:
