@@ -102,6 +102,7 @@ def get_iso_code(country_names):
 
 def acled_api(
     countries=None,
+    country_codes =None,
     region=None,
     start_date=None,
     end_date=None,
@@ -135,8 +136,11 @@ def acled_api(
             "Failed to obtain OAuth token. Please check your ACLED credentials."
         )
     
+    if country_codes:
+        country_iso = country_codes
+    else:
     # Convert country names to ISO codes
-    country_iso = get_iso_code(countries) if countries else None
+        country_iso = get_iso_code(countries) if countries else None
     
     # Building the URL for the new ACLED API
     url = "https://acleddata.com/api/acled/read"
