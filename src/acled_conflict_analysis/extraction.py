@@ -144,7 +144,7 @@ def acled_api(
     # Set up parameters
     params = {
         "_format": "json",
-        "limit": 200000
+        "limit": 4000000
     }
     
     if country_iso:
