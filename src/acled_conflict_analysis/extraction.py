@@ -6,6 +6,14 @@ import io
 import json
 import getpass
 from .acled_auth import get_oauth_token, get_oauth_email, authenticate_with_credentials
+#import pycountry
+
+# Optional dependency for ISO code lookups
+try:
+    import pycountry  # type: ignore
+    #print("✅ 'pycountry' is available for ISO code lookups.")
+except Exception:  # optional
+    pycountry = None
 
 def save_acled_credentials(email, api_key=None):
     """
@@ -100,6 +108,86 @@ def get_iso_code(country_names):
     
     return iso_country
 
+# --- ISO numeric normalization helpers ---
+def _to_numeric_iso(code_or_name: str) -> str:
+    """
+    Convert a country identifier (alpha-2, alpha-3, numeric, or common name)
+    into ISO-3166-1 numeric code (as a zero-padded 3-character string).
+
+    Tries pycountry first (if available), then falls back to the local
+    iso_country_map (expects columns COUNTRY and ISO_CODE).
+    """
+    if code_or_name is None:
+        raise ValueError("Empty country identifier provided")
+
+    s = str(code_or_name).strip()
+    if not s:
+        raise ValueError("Empty country identifier provided")
+
+    # Already numeric
+    if s.isdigit():
+        return s.zfill(3)
+
+    # Try pycountry (preferred for alpha codes and names)
+    if pycountry:
+        c = (pycountry.countries.get(alpha_3=s.upper())
+             or pycountry.countries.get(alpha_2=s.upper()))
+        if not c:
+            try:
+                c = pycountry.countries.lookup(s)
+            except Exception:
+                c = None
+        if c and getattr(c, "numeric", None):
+            # pycountry returns numeric as a zero-padded string already
+            return str(c.numeric).zfill(3)
+
+    # Fallback: local mapping by country name
+    try:
+        if isinstance(iso_country_map, pd.DataFrame) and {'COUNTRY','ISO_CODE'}.issubset(iso_country_map.columns):
+            # case-insensitive match on name
+            mask = iso_country_map['COUNTRY'].astype(str).str.casefold() == s.casefold()
+            if mask.any():
+                val = iso_country_map.loc[mask, 'ISO_CODE'].iloc[0]
+                return str(val).zfill(3)
+    except Exception:
+        pass
+
+    raise ValueError(f"Could not convert '{code_or_name}' to ISO numeric code")
+
+
+def _normalize_iso_numeric_list(countries=None, country_codes=None):
+    """
+    Build a list of ISO numeric codes from either countries (names) or country_codes
+    (alpha-2/alpha-3/numeric). Skips blanks/None and deduplicates while preserving order.
+    """
+    raw = []
+    if country_codes:
+        raw.extend([c for c in country_codes if c])
+    elif countries:
+        raw.extend([c for c in countries if c])
+
+    numeric = []
+    seen = set()
+    provided_count = len(raw)
+    for item in raw:
+        try:
+            num = _to_numeric_iso(item)
+        except ValueError:
+            # Skip invalid entries but collect nothing here
+            continue
+        if num not in seen:
+            seen.add(num)
+            numeric.append(num)
+    # If user provided at least one identifier but nothing could be mapped,
+    # fail fast to avoid unfiltered API queries returning all countries.
+    if provided_count > 0 and len(numeric) == 0:
+        raise ValueError(
+            "Could not convert provided country identifiers to ISO numeric codes. "
+            "Install 'pycountry' or pass country names via 'countries' or numeric ISO codes via 'country_codes'."
+        )
+    return numeric
+
+
 def acled_api(
     countries=None,
     country_codes =None,
@@ -136,11 +224,8 @@ def acled_api(
             "Failed to obtain OAuth token. Please check your ACLED credentials."
         )
     
-    if country_codes:
-        country_iso = country_codes
-    else:
-    # Convert country names to ISO codes
-        country_iso = get_iso_code(countries) if countries else None
+    # Normalize to ISO numeric codes from either names or codes
+    country_iso = _normalize_iso_numeric_list(countries=countries, country_codes=country_codes)
     
     # Building the URL for the new ACLED API
     url = "https://acleddata.com/api/acled/read"
@@ -273,12 +358,8 @@ def acled_api_with_credentials(
             "Failed to obtain OAuth token. Please check your ACLED credentials."
         )
     
-    if country_codes:
-        country_iso = country_codes
-    else:
-
-    # Convert country names to ISO codes
-        country_iso = get_iso_code(countries) if countries else None
+    # Normalize to ISO numeric codes from either names or codes
+    country_iso = _normalize_iso_numeric_list(countries=countries, country_codes=country_codes)
     
     # Building the URL for the new ACLED API
     url = "https://acleddata.com/api/acled/read"
@@ -323,9 +404,9 @@ def acled_api_with_credentials(
         'Content-Type': 'application/json'
     }
 
-    print(f"🌐 Making request to ACLED API...")
-    print(f"URL: {url}")
-    print(f"Parameters: {params}")
+    # print(f"🌐 Making request to ACLED API...")
+    # print(f"URL: {url}")
+    # print(f"Parameters: {params}")
 
     # Making the GET request with Bearer token authentication
     response = requests.get(url, params=params, headers=headers, verify=False)
