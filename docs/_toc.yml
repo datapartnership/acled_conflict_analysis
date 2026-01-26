@@ -1,14 +1,12 @@
-# format: jb-book
-# root: README
+format: jb-book
+root: README
 
 parts:
-  - caption: API Reference
-  # Document the submodules of the package
+  - caption: Conflict Analysis
     chapters:
-      - file: api/package_name
-  #- caption: Tutorials
-  # Input notebooks that include tutorials
-    # chapters:
-    #   - file: notebooks/tessellate.ipynb
+      - file: notebooks/conflict.md
+      - file: notebooks/example.ipynb
+      - file: notebooks/extraction.ipynb
+      - file: notebooks/visualizing-acled.ipynb
 
 

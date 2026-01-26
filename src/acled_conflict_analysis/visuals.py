@@ -1223,19 +1223,20 @@ from matplotlib.cm import ScalarMappable
 
 def _calculate_h3_quartiles(data_gdf, measure):
     """
-    Calculates quartile bin edges and assigns quartile categories to the data.
+    Calculates tercile bin edges and assigns tercile categories to the data.
+    Uses qcut for true terciles (equal number of observations in each bin).
 
     Parameters:
     -----------
     data_gdf : GeoDataFrame
-        The full dataset to calculate quartiles from.
+        The full dataset to calculate terciles from.
     measure : str
-        The numeric column to base quartiles on.
+        The numeric column to base terciles on.
 
     Returns:
     --------
     tuple: (bin_edges, plot_data_with_quartiles, norm)
-        - bin_edges (list): The calculated quartile bin edges.
+        - bin_edges (list): The calculated tercile bin edges.
         - plot_data_with_quartiles (GeoDataFrame): The input GeoDataFrame
           with an added 'quartile' column and 'quartile_numeric' column.
         - norm (Normalize): Matplotlib Normalizer for consistent colormapping.
@@ -1243,8 +1244,8 @@ def _calculate_h3_quartiles(data_gdf, measure):
     plot_data = data_gdf.copy(deep=True)
     non_nan_data = plot_data[plot_data[measure].notna()]
 
-    # Handle cases where there is no data or not enough unique values for 4 quartiles
-    if non_nan_data.empty or non_nan_data[measure].nunique() < 4:
+    # Handle cases where there is no data or not enough unique values for 3 terciles
+    if non_nan_data.empty or non_nan_data[measure].nunique() < 3:
         min_val = non_nan_data[measure].min() if not non_nan_data.empty else 0
         max_val = non_nan_data[measure].max() if not non_nan_data.empty else 1
         
@@ -1252,69 +1253,47 @@ def _calculate_h3_quartiles(data_gdf, measure):
             min_val -= 0.0001
             max_val += 0.0001
         
-        step = (max_val - min_val) / 4
-        bin_edges = [min_val + i * step for i in range(5)]
+        step = (max_val - min_val) / 3
+        bin_edges = [min_val + i * step for i in range(4)]
         
         quartile_categories = pd.cut(
             plot_data[measure],
             bins=bin_edges,
-            labels=['Q1', 'Q2', 'Q3', 'Q4'],
+            labels=['Q1', 'Q2', 'Q3'],
             include_lowest=True
         )
     else:
-        # Proceed with quantile-based binning
-        q_values = [0, 0.25, 0.5, 0.75, 1.0]
-        quantiles = non_nan_data[measure].quantile(q_values).tolist()
-
-        unique_quantiles = []
-        for q in quantiles:
-            if q not in unique_quantiles:
-                unique_quantiles.append(q)
-
-        if len(unique_quantiles) < 5:
-            # Fallback for when quantiles might produce fewer than 5 unique edges
-            sorted_unique_values = sorted(non_nan_data[measure].unique())
-            if len(sorted_unique_values) >= 4:
-                bin_edges = np.percentile(non_nan_data[measure], [0, 25, 50, 75, 100]).tolist()
-                current_max = -np.inf
-                for i in range(len(bin_edges)):
-                    if bin_edges[i] <= current_max:
-                        bin_edges[i] = current_max + 1e-6
-                    current_max = bin_edges[i]
+        # Calculate percentiles for terciles
+        q_values = [0, 0.33333, 0.66667, 1.0]
+        percentile_edges = non_nan_data[measure].quantile(q_values).tolist()
+        
+        # Ensure unique bin edges by adding tiny increments if needed
+        bin_edges = []
+        for i, edge in enumerate(percentile_edges):
+            if i == 0 or edge > bin_edges[-1]:
+                bin_edges.append(edge)
             else:
-                min_val = non_nan_data[measure].min()
-                max_val = non_nan_data[measure].max()
-                if min_val == max_val:
-                    min_val -= 0.0001
-                    max_val += 0.0001
-                step = (max_val - min_val) / 4
-                bin_edges = [min_val + i * step for i in range(5)]
-            
-            quartile_categories = pd.cut(
-                plot_data[measure],
-                bins=bin_edges,
-                labels=['Q1', 'Q2', 'Q3', 'Q4'],
-                include_lowest=True
-            )
-        else:
-            bin_edges = unique_quantiles
-            quartile_categories = pd.cut(
-                plot_data[measure],
-                bins=unique_quantiles,
-                labels=['Q1', 'Q2', 'Q3', 'Q4'],
-                include_lowest=True
-            )
+                # Add a tiny increment to make it unique
+                bin_edges.append(bin_edges[-1] + 1e-9)
+        
+        # Use cut to assign data to bins
+        quartile_categories = pd.cut(
+            plot_data[measure],
+            bins=bin_edges,
+            labels=['Q1', 'Q2', 'Q3'],
+            include_lowest=True
+        )
     
     plot_data = plot_data.assign(quartile=quartile_categories.astype(str))
     
-    quartile_map = {'Q1': 0, 'Q2': 1, 'Q3': 2, 'Q4': 3}
+    quartile_map = {'Q1': 0, 'Q2': 1, 'Q3': 2}
     plot_data['quartile_numeric'] = plot_data['quartile'].map(quartile_map).fillna(-1)
     
-    norm = Normalize(vmin=0, vmax=3) # 4 quartiles, mapped to 0-3 for norm
+    norm = Normalize(vmin=0, vmax=2) # 3 terciles, mapped to 0-2 for norm
 
     return bin_edges, plot_data, norm
 
-def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, boundary_gdf=None, subplot_title=None, subtitle_text=None):
+def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, country_boundary=None, admin1_boundary=None, subplot_title=None, date_text=None, subtitle_text=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8):
     """
     Plots H3 grid data on a given Matplotlib axes object.
 
@@ -1328,28 +1307,117 @@ def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, boundary_gdf=None, subplot_t
         The colormap to use.
     norm : matplotlib.colors.Normalize
         The normalizer for the colormap.
-    boundary_gdf : GeoDataFrame, optional
-        Geographical boundaries to plot on the map.
+    country_boundary : GeoDataFrame, optional
+        Country boundary (admin0) to plot behind H3 grids.
+    admin1_boundary : GeoDataFrame, optional
+        Admin1 boundaries to plot on top of H3 grids.
     subplot_title : str, optional
         Title for this specific subplot.
     subtitle_text : str, optional
         An optional subtitle for this specific subplot, displayed in the bottom-left corner.
+    basemap_choice : str, optional
+        Basemap to use. Options: 'osm', 'carto_light', 'carto_dark'. If None, no basemap.
+    basemap_alpha : float, optional
+        Transparency of the basemap (0=invisible, 1=opaque). Default is 0.5.
+    hexagon_alpha : float, optional
+        Transparency of the hexagons (0=invisible, 1=opaque). Default is 0.7.
+    zoom : int, optional
+        Zoom level for the basemap. Default is 8.
     """
-    if boundary_gdf is not None:
-        boundary_gdf.boundary.plot(ax=ax, color='lightgrey', alpha=0.5, linewidth=1)
+    from matplotlib.path import Path
+    from matplotlib.patches import PathPatch
+    from shapely.geometry import box
     
-    data_subset_gdf.plot(
-        ax=ax,
-        color=cmap(norm(data_subset_gdf['quartile_numeric'])),
-        alpha=0.7,
-        legend=False
-    )
+    # Get country geometry and bounds
+    if country_boundary is not None:
+        country_bounds = country_boundary.total_bounds
+        country_geom = country_boundary.union_all()
+        
+        # Set axis limits
+        ax.set_xlim(country_bounds[0], country_bounds[2])
+        ax.set_ylim(country_bounds[1], country_bounds[3])
+    
+    # Plot country border behind H3 grids (like bivariate map)
+    if country_boundary is not None:
+        country_boundary.boundary.plot(ax=ax, color='black', alpha=0.75, linewidth=1.5, zorder=14)
+    
+    # Add basemap FIRST (if needed) so axis limits are set correctly
+    if basemap_choice is not None:
+        import contextily as ctx
+        basemap_dict = {
+            'osm': ctx.providers.OpenStreetMap.Mapnik,
+            'carto_light': ctx.providers.CartoDB.Positron,
+            'carto_dark': ctx.providers.CartoDB.DarkMatter
+        }
+        
+        # Check if basemap_choice is a custom URL or a predefined choice
+        if basemap_choice.startswith('http'):
+            # Custom tile URL provided
+            basemap_source = basemap_choice
+        else:
+            # Use predefined basemap
+            basemap_source = basemap_dict.get(basemap_choice, ctx.providers.CartoDB.Positron)
+        
+        try:
+            ctx.add_basemap(ax, source=basemap_source, crs=data_subset_gdf.crs.to_string(), 
+                          alpha=basemap_alpha, zoom=zoom, zorder=1)
+        except Exception as e:
+            print(f"Warning: Could not add basemap. Error: {e}")
+    
+    # Plot H3 hexagons with colors (filter out invalid quartiles) - ON TOP of basemap
+    valid_data = data_subset_gdf[data_subset_gdf['quartile_numeric'] >= 0].copy()
+    
+    if len(valid_data) > 0:
+        valid_data.plot(
+            ax=ax,
+            color=cmap(norm(valid_data['quartile_numeric'])),
+            alpha=hexagon_alpha,
+            edgecolor='white',
+            linewidth=0.5,
+            legend=False,
+            zorder=10
+        )
+    else:
+        print(f"Warning: No valid data to plot after filtering")
+    
+    # Plot admin1 boundaries on top of everything
+    if admin1_boundary is not None:
+        admin1_boundary.boundary.plot(ax=ax, color='#666666', alpha=0.8, linewidth=1, zorder=15)
+    
+    # Create mask for areas outside country (like bivariate map)
+    if country_boundary is not None:
+        margin = 60.0
+        bbox = box(country_bounds[0] - margin, country_bounds[1] - margin, 
+                   country_bounds[2] + margin, country_bounds[3] + margin)
+        mask_geom = bbox.difference(country_geom)
+        
+        mask_patches = [mask_geom] if mask_geom.geom_type == 'Polygon' else list(mask_geom.geoms) if mask_geom.geom_type == 'MultiPolygon' else []
+        
+        for mask_poly in mask_patches:
+            if mask_poly.exterior is not None:
+                vertices, codes = [], []
+                ext_coords = list(mask_poly.exterior.coords)
+                vertices.extend(ext_coords)
+                codes.extend([Path.MOVETO] + [Path.LINETO] * (len(ext_coords) - 2) + [Path.CLOSEPOLY])
+                
+                for interior in mask_poly.interiors:
+                    int_coords = list(interior.coords)
+                    vertices.extend(int_coords)
+                    codes.extend([Path.MOVETO] + [Path.LINETO] * (len(int_coords) - 2) + [Path.CLOSEPOLY])
+                
+                path = Path(vertices, codes)
+                patch = PathPatch(path, facecolor='white', edgecolor='none', zorder=100)
+                ax.add_patch(patch)
     
     if subplot_title:
-        ax.set_title(subplot_title)
+        ax.set_title(subplot_title, fontsize=14, fontweight='bold', loc='left', pad=10)
+    if date_text:
+        ax.text(0.02, 0.98, date_text, transform=ax.transAxes, 
+                fontsize=10, verticalalignment='top', color='#555', zorder=200)
     
     if subtitle_text:
-        ax.text(0.01, 0.01, subtitle_text, ha='left', va='bottom', transform=ax.transAxes, fontsize=10)
+        ax.text(0.02, 0.02, subtitle_text, transform=ax.transAxes, 
+                fontsize=10, verticalalignment='bottom', color='#555', zorder=200)
     
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -1360,10 +1428,123 @@ def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, boundary_gdf=None, subplot_t
 
 # --- Main Plotting Functions ---
 
-def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', cmap_name='Blues', figsize=(10, 8), subtitle=None, boundary_gdf=None):
+def create_bivariate_conflict_map(
+    conflict_data, title="Conflict Patterns: Events × Fatalities"
+):
+    # Set up figure
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    plot_data = conflict_data.copy(deep=True)
+
+    # Remove NaN values for calculations
+    events_data = plot_data["nrEvents"].dropna()
+    fatalities_data = plot_data["nrFatalities"].dropna()
+
+    # Calculate quantiles and ensure unique bin edges
+    def create_unique_bins(data, num_bins=3):  # Changed to 3 bins
+        quantiles = [0, 0.33, 0.67, 1.0]  # Changed to 3 equal quantiles
+        bins = data.quantile(quantiles).tolist()
+        # Ensure bins are unique by adding small increments
+        for i in range(1, len(bins)):
+            if bins[i] <= bins[i - 1]:
+                bins[i] = bins[i - 1] + 0.000001
+        return bins
+
+    events_bins = create_unique_bins(events_data)
+    fatalities_bins = create_unique_bins(fatalities_data)
+
+    # Create categories
+    plot_data["events_category"] = pd.cut(
+        plot_data["nrEvents"],
+        bins=events_bins,
+        labels=["Low", "Medium", "High"],  # Changed to 3 categories
+        include_lowest=True,
+    )
+
+    plot_data["fatalities_category"] = pd.cut(
+        plot_data["nrFatalities"],
+        bins=fatalities_bins,
+        labels=["Low", "Medium", "High"],  # Changed to 3 categories
+        include_lowest=True,
+    )
+
+    # Create color dictionary with 3×3 matrix (9 colors)
+    colors = {
+        ("Low", "Low"): (0.85, 0.85, 0.85, 1),  # Light gray
+        ("Low", "Medium"): (0.9, 0.6, 0.6, 1),  # Medium pink
+        ("Low", "High"): (0.9, 0.2, 0.2, 1),  # Red
+        ("Medium", "Low"): (0.6, 0.6, 0.9, 1),  # Medium blue
+        ("Medium", "Medium"): (0.7, 0.5, 0.7, 1),  # Purple
+        ("Medium", "High"): (0.8, 0.3, 0.5, 1),  # Dark pink
+        ("High", "Low"): (0.2, 0.2, 0.9, 1),  # Blue
+        ("High", "Medium"): (0.4, 0.2, 0.7, 1),  # Dark purple
+        ("High", "High"): (0.4, 0.1, 0.4, 1),  # Very dark purple
+    }
+
+    # Assign colors
+    plot_data["color"] = plot_data.apply(
+        lambda row: colors.get(
+            (row["events_category"], row["fatalities_category"]), (0.8, 0.8, 0.8, 0.3)
+        )
+        if not pd.isna(row["events_category"])
+        and not pd.isna(row["fatalities_category"])
+        else (0.8, 0.8, 0.8, 0.3),
+        axis=1,
+    )
+
+    # Plot each period
+    for idx, period in enumerate(["Before HTS", "Regime Change", "After Assad"]):
+        # Plot the Syria administrative boundaries
+        syria_adm1.boundary.plot(ax=ax[idx], color="lightgrey", alpha=0.5, linewidth=1)
+
+        # Filter data for this period
+        period_data = plot_data[plot_data["category"] == period]
+
+        # Plot filled H3 grid cells
+        for _, row in period_data.iterrows():
+            if not pd.isna(row["color"]):
+                # Plot the polygon geometry with fill color
+                ax[idx].fill(*row.geometry.exterior.xy, color=row["color"], alpha=0.8)
+
+        ax[idx].set_title(period, fontsize=14)
+        ax[idx].set_xticks([])
+        ax[idx].set_yticks([])
+        for spine in ax[idx].spines.values():
+            spine.set_visible(False)
+
+    # Add legend
+    legend_ax = fig.add_axes([0.28, 0.05, 0.44, 0.15], frameon=True)
+    legend_ax.set_facecolor("white")
+
+    categories = ["Low", "Medium", "High"]  # Changed to 3 categories
+    for i, event_cat in enumerate(categories):
+        for j, fatal_cat in enumerate(categories):
+            legend_ax.add_patch(
+                plt.Rectangle((j, i), 1, 1, color=colors[(event_cat, fatal_cat)])
+            )
+
+    legend_ax.text(
+        1.0, -0.5, "Fatalities →", ha="center", fontsize=12, fontweight="bold"
+    )
+    legend_ax.text(
+        -0.5, 1.0, "Events →", va="center", rotation=90, fontsize=12, fontweight="bold"
+    )
+
+    for i, cat in enumerate(categories):
+        legend_ax.text(i + 0.5, -0.2, cat, ha="center", fontsize=9)
+        legend_ax.text(-0.2, i + 0.5, cat, va="center", fontsize=9)
+
+    legend_ax.set_xlim(-0.7, 3.2)  # Adjusted for 3 categories
+    legend_ax.set_ylim(-0.7, 3.2)  # Adjusted for 3 categories
+    legend_ax.axis("off")
+
+    plt.suptitle(title, fontsize=16, y=0.97)
+
+    return fig, ax
+
+def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, cmap_name=None, custom_colors=None, figsize=None, subtitle=None, country_boundary=None, admin1_boundary=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, date_ranges=None, legend_title=None):
     """
     Plot H3 grids with color representing the specified measure divided into quartiles.
-    This function generates a single map for the entire dataset provided, without filtering by period.
+    Can create either a single map or multiple maps based on categories.
 
     Parameters:
     -----------
@@ -1373,53 +1554,128 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', cmap_name='Blues', fi
         The main title for the figure (will be suptitle).
     measure : str
         The measure to plot on color scale (can be any numeric column).
+    category_list : list, optional
+        List of category values to create separate maps for. If None, creates a single map.
     cmap_name : str, optional
-        The name of the colormap to use (e.g., 'Blues', 'Reds', 'Purples'). Defaults to 'Blues'.
+        The name of the colormap to use (e.g., 'Blues', 'Reds', 'Purples'). If None, automatically selected based on measure.
+    custom_colors : list, optional
+        List of 3 hex color strings for terciles (Q1 to Q3). If provided, overrides cmap_name.
     figsize : tuple, optional
-        The size of the figure (width, height) in inches. Defaults to (10, 8).
+        The size of the figure (width, height) in inches. If None, calculated based on number of categories.
     subtitle : str, optional
         An optional subtitle for the plot, displayed in the bottom-left corner. Defaults to None.
-    boundary_gdf : GeoDataFrame, optional
-        Geographical boundaries to plot on the map.
+    country_boundary : GeoDataFrame, optional
+        Country boundary (admin0) to plot behind H3 grids.
+    admin1_boundary : GeoDataFrame, optional
+        Admin1 boundaries to plot on top of H3 grids.
+    basemap_choice : str, optional
+        Basemap to use. Options: 'osm', 'carto_light', 'carto_dark'. If None, no basemap.
+    basemap_alpha : float, optional
+        Transparency of the basemap (0=invisible, 1=opaque). Default is 0.5.
+    date_ranges : dict, optional
+        Dictionary mapping category names to date range strings (e.g., {'Before': 'Nov 26, 2023 - Nov 27, 2024'}).
+    legend_title : str, optional
+        Title for the legend. If None, no title is displayed.
     """
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    import matplotlib.font_manager as fm
+    import os
+    
+    # Set professional font - load Open Sans directly if available (same as bivariate map)
+    open_sans_path = os.path.expanduser("~/Library/Fonts/OpenSans-VariableFont_wdth,wght.ttf")
+    if os.path.exists(open_sans_path):
+        try:
+            fm.fontManager.addfont(open_sans_path)
+            plt.rcParams['font.family'] = 'Open Sans'
+        except:
+            plt.rcParams['font.family'] = 'sans-serif'
+            plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans']
+    else:
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans']
+    
+    # Determine if we're creating multiple maps or a single map
+    if category_list is None:
+        num_maps = 1
+        category_list = ['All Data']
+        if 'category' not in daily_mean_gdf.columns:
+            daily_mean_gdf = daily_mean_gdf.copy()
+            daily_mean_gdf['category'] = 'All Data'
+    else:
+        num_maps = len(category_list)
+    
+    # Set default figure size if not provided
+    if figsize is None:
+        figsize = (5 * num_maps, 5)
+    
+    fig, ax = plt.subplots(1, num_maps, figsize=figsize, squeeze=False)
+    ax = ax[0]  # Get the first row since we're using 1 row
 
-    try:
-        cmap = plt.colormaps[cmap_name]
-    except KeyError:
-        print(f"Warning: Colormap '{cmap_name}' not found. Falling back to 'Blues'.")
-        cmap = plt.colormaps['Blues']
+    # Use custom colors or auto-select colormap based on measure
+    if custom_colors is not None:
+        from matplotlib.colors import ListedColormap
+        if len(custom_colors) != 3:
+            print(f"Warning: custom_colors must have exactly 3 colors. Got {len(custom_colors)}. Using default colormap.")
+            custom_colors = None
+    
+    if custom_colors is not None:
+        cmap = ListedColormap(custom_colors)
+    else:
+        if cmap_name is None:
+            if measure == 'nrFatalities':
+                cmap_name = 'Reds'
+            elif measure == 'nrEvents':
+                cmap_name = 'Blues'
+            else:
+                cmap_name = 'Purples'
 
-    # Calculate quartiles and prepare data for plotting (globally for this single map)
+        try:
+            cmap = plt.colormaps[cmap_name]
+        except KeyError:
+            print(f"Warning: Colormap '{cmap_name}' not found. Falling back to 'Blues'.")
+            cmap = plt.colormaps['Blues']
+
+    # Calculate quartiles and prepare data for plotting (globally across all categories)
     bin_edges, plot_data_with_quartiles, norm = _calculate_h3_quartiles(daily_mean_gdf, measure)
 
-    # Plot on the single axis
-    _plot_h3_on_ax(ax, plot_data_with_quartiles, cmap, norm, boundary_gdf, subtitle_text=subtitle)
+    # Plot each category
+    for idx, category in enumerate(category_list):
+        current_ax = ax[idx] if num_maps > 1 else ax[0]
+        
+        # Filter data for this category
+        if category == 'All Data':
+            category_data = plot_data_with_quartiles
+        else:
+            category_data = plot_data_with_quartiles[plot_data_with_quartiles['category'] == category]
+        
+        # Plot on this axis
+        date_text = date_ranges.get(category, '') if date_ranges else ''
+        #print(f"date text is '{date_text}' for category '{category}'")
+        _plot_h3_on_ax(current_ax, category_data, cmap, norm, country_boundary=country_boundary, admin1_boundary=admin1_boundary, subplot_title=category, date_text=date_text, subtitle_text=None, basemap_choice=basemap_choice, basemap_alpha=basemap_alpha, hexagon_alpha=hexagon_alpha, zoom=zoom)
     
     # Create custom legend elements
     legend_elements = []
-    colors_for_legend = [cmap(norm(i)) for i in range(4)]
+    colors_for_legend = [cmap(norm(i)) for i in range(3)]
     
     # Ensure bin_edges has enough elements for the labels
     # This block ensures bin_edges is correctly padded for legend labels,
-    # especially in edge cases where unique values are less than 4.
-    if len(bin_edges) < 5:
-        # Calculate a reasonable 'step' if not explicitly defined from quartile calculation
+    # especially in edge cases where unique values are less than 3.
+    if len(bin_edges) < 4:
+        # Calculate a reasonable 'step' if not explicitly defined from tercile calculation
         if len(bin_edges) > 1:
             step_val = bin_edges[1] - bin_edges[0]
         else: # If bin_edges has 0 or 1 element, use a default step or infer from measure range
             if not daily_mean_gdf[measure].empty:
                 data_range = daily_mean_gdf[measure].max() - daily_mean_gdf[measure].min()
-                step_val = data_range / 4 if data_range > 0 else 1
+                step_val = data_range / 3 if data_range > 0 else 1
             else:
                 step_val = 1
         
         last_val = bin_edges[-1] if bin_edges else 0
-        while len(bin_edges) < 5:
+        while len(bin_edges) < 4:
             bin_edges.append(last_val + step_val)
             last_val = bin_edges[-1]
             
-    for i in range(4):
+    for i in range(3):
         try:
             label = f'Q{i+1} ({bin_edges[i]:.2f}-{bin_edges[i+1]:.2f})'
         except IndexError:
@@ -1434,10 +1690,31 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', cmap_name='Blues', fi
             )
         )
     
-    fig.legend(handles=legend_elements, loc='lower right', ncol=1, bbox_to_anchor=(1, 0), frameon=False)
+    legend = fig.legend(handles=legend_elements, loc='lower right', ncol=1, bbox_to_anchor=(1, 0), frameon=False, prop={'family': 'Open Sans', 'size': 10})
     
-    plt.suptitle(title, fontsize=16) # Main figure title
-    fig.set_constrained_layout(True)
+    # Add legend title if provided with left alignment
+    if legend_title:
+        legend.set_title(legend_title, prop={'size': 10, 'weight': 'bold', 'family': 'Open Sans'})
+        legend._legend_box.align = 'left'
+    
+    # Main title - bold and larger (matching bivariate map style)
+    from matplotlib.font_manager import FontProperties
+    bold_font = FontProperties(family='Open Sans', weight='bold', size=14.5)
+    fig.text(0.05, 0.97, title, fontproperties=bold_font, ha='left')
+    
+    # Subtitle below title - regular weight, smaller, matches subplot subtitle color
+    if subtitle:
+        subtitle_font = FontProperties(family='Open Sans', size=10)
+        fig.text(0.05, 0.93, subtitle, fontproperties=subtitle_font, ha='left', color='#555')
+    
+    # Add source text at bottom
+    from datetime import datetime
+    extraction_date = datetime.now().strftime('%b %d, %Y')
+    source_font = FontProperties(family='Open Sans', size=8)
+    fig.text(0.05, 0.02, f"Source: ACLED. Extracted {extraction_date}", 
+             fontproperties=source_font, color='#666', ha='left')
+    
+    fig.subplots_adjust(left=0.05, right=0.95, top=0.92, bottom=0.06)
     
     return fig, ax
 
@@ -1534,25 +1811,25 @@ def plot_h3_maps_by_column_value(daily_mean_gdf, column_name, title, measure='nr
 
     # Create a unified legend for the entire figure
     legend_elements = []
-    colors_for_legend = [cmap(norm(i)) for i in range(4)]
+    colors_for_legend = [cmap(norm(i)) for i in range(3)]
 
     # Ensure bin_edges has enough elements for the labels (similar logic as in get_h3_maps)
-    if len(bin_edges) < 5:
+    if len(bin_edges) < 4:
         if len(bin_edges) > 1:
             step_val = bin_edges[1] - bin_edges[0]
         else:
             if not daily_mean_gdf[measure].empty:
                 data_range = daily_mean_gdf[measure].max() - daily_mean_gdf[measure].min()
-                step_val = data_range / 4 if data_range > 0 else 1
+                step_val = data_range / 3 if data_range > 0 else 1
             else:
                 step_val = 1
         
         last_val = bin_edges[-1] if bin_edges else 0
-        while len(bin_edges) < 5:
+        while len(bin_edges) < 4:
             bin_edges.append(last_val + step_val)
             last_val = bin_edges[-1]
             
-    for i in range(4):
+    for i in range(3):
         try:
             label = f'Q{i+1} ({bin_edges[i]:.2f}-{bin_edges[i+1]:.2f})'
         except IndexError:
@@ -1871,3 +2148,437 @@ def plot_bivariate_maps_by_column_value(daily_mean_gdf, column_name, measure1_co
     fig.set_constrained_layout(True)
     
     return fig, axes
+
+def create_bivariate_conflict_map(conflict_data, category_list, boundary_gdf=None, title="Conflict Patterns: Events × Fatalities"):
+    # Set up figure - dynamic number of subplots based on category_list
+    num_categories = len(category_list)
+    fig, ax = plt.subplots(1, num_categories, figsize=(5 * num_categories, 5))
+    
+    # Handle single category case (ax won't be array)
+    if num_categories == 1:
+        ax = [ax]
+    
+    plot_data = conflict_data.copy(deep=True)
+    
+    # Remove NaN values for calculations
+    events_data = plot_data['nrEvents'].dropna()
+    fatalities_data = plot_data['nrFatalities'].dropna()
+    
+    # Calculate quantiles and ensure unique bin edges
+    def create_unique_bins(data, num_bins=3):
+        quantiles = [0, 0.33, 0.67, 1.0]
+        bins = data.quantile(quantiles).tolist()
+        # Ensure bins are unique by adding small increments
+        for i in range(1, len(bins)):
+            if bins[i] <= bins[i-1]:
+                bins[i] = bins[i-1] + 0.000001
+        return bins
+    
+    events_bins = create_unique_bins(events_data)
+    fatalities_bins = create_unique_bins(fatalities_data)
+    
+    # Create categories
+    plot_data['events_category'] = pd.cut(
+        plot_data['nrEvents'], 
+        bins=events_bins,
+        labels=['Low', 'Medium', 'High'],
+        include_lowest=True
+    )
+    
+    plot_data['fatalities_category'] = pd.cut(
+        plot_data['nrFatalities'], 
+        bins=fatalities_bins,
+        labels=['Low', 'Medium', 'High'],
+        include_lowest=True
+    )
+    
+    # Create color dictionary with 3×3 matrix (9 colors)
+    colors = {
+        ('Low', 'Low'): (0.85, 0.85, 0.85, 1),           # Light gray
+        ('Low', 'Medium'): (0.9, 0.6, 0.6, 1),           # Medium pink
+        ('Low', 'High'): (0.9, 0.2, 0.2, 1),             # Red
+        
+        ('Medium', 'Low'): (0.6, 0.6, 0.9, 1),           # Medium blue
+        ('Medium', 'Medium'): (0.7, 0.5, 0.7, 1),        # Purple
+        ('Medium', 'High'): (0.8, 0.3, 0.5, 1),          # Dark pink
+        
+        ('High', 'Low'): (0.2, 0.2, 0.9, 1),             # Blue
+        ('High', 'Medium'): (0.4, 0.2, 0.7, 1),          # Dark purple
+        ('High', 'High'): (0.4, 0.1, 0.4, 1)             # Very dark purple
+    }
+    
+    # Assign colors
+    plot_data['color'] = plot_data.apply(
+        lambda row: colors.get((row['events_category'], row['fatalities_category']), 
+                              (0.8, 0.8, 0.8, 0.3)) 
+        if not pd.isna(row['events_category']) and not pd.isna(row['fatalities_category']) 
+        else (0.8, 0.8, 0.8, 0.3), 
+        axis=1
+    )
+    
+    # Plot each period from category_list
+    for idx, period in enumerate(category_list):
+        # Plot the boundary if provided
+        if boundary_gdf is not None:
+            boundary_gdf.boundary.plot(ax=ax[idx], color='lightgrey', alpha=0.5, linewidth=1)
+        
+        # Filter data for this period
+        period_data = plot_data[plot_data['category'] == period]
+        
+        # Plot filled H3 grid cells
+        for _, row in period_data.iterrows():
+            if not pd.isna(row['color']):
+                # Plot the polygon geometry with fill color
+                ax[idx].fill(*row.geometry.exterior.xy, color=row['color'], alpha=0.8)
+        
+        ax[idx].set_title(period, fontsize=14)
+        ax[idx].set_xticks([])
+        ax[idx].set_yticks([])
+        for spine in ax[idx].spines.values():
+            spine.set_visible(False)
+    
+    # Add legend - adjust position based on number of categories
+    if num_categories == 2:
+        legend_left = 0.35
+        legend_width = 0.3
+    else:
+        legend_left = 0.28
+        legend_width = 0.44
+        
+    legend_ax = fig.add_axes([legend_left, 0.05, legend_width, 0.15], frameon=True)
+    legend_ax.set_facecolor('white')
+    
+    bin_categories = ['Low', 'Medium', 'High']
+    for i, event_cat in enumerate(bin_categories):
+        for j, fatal_cat in enumerate(bin_categories):
+            legend_ax.add_patch(plt.Rectangle(
+                (j, i), 1, 1, color=colors[(event_cat, fatal_cat)]
+            ))
+    
+    legend_ax.text(1.0, -0.5, "Fatalities →", ha='center', fontsize=12, fontweight='bold')
+    legend_ax.text(-0.5, 1.0, "Events →", va='center', rotation=90, fontsize=12, fontweight='bold')
+    
+    for i, cat in enumerate(bin_categories):
+        legend_ax.text(i + 0.5, -0.2, cat, ha='center', fontsize=9)
+        legend_ax.text(-0.2, i + 0.5, cat, va='center', fontsize=9)
+    
+    legend_ax.set_xlim(-0.7, 3.2)
+    legend_ax.set_ylim(-0.7, 3.2)
+    legend_ax.axis('off')
+    
+    plt.suptitle(title, fontsize=16, y=0.97)
+    
+    return fig, ax
+
+
+def create_bivariate_map_with_basemap(
+    conflict_data,
+    category_list,
+    country_boundary,
+    admin1_boundary=None,
+    main_title="Conflict Patterns with Terrain",
+    basemap_choice='carto_light',
+    basemap_alpha=0.5,
+    hexagon_alpha=0.5,
+    extraction_date=None,
+    date_ranges=None,
+    bivariate_colors=None,
+    legend_size=0.24,
+    figsize_per_map=5
+):
+    """
+    Create a bivariate choropleth map with basemap background for any country.
+    
+    This function creates a multi-panel map showing conflict events and fatalities 
+    simultaneously using a 3×3 bivariate color scheme, with a configurable basemap.
+    Dates are automatically extracted from the dataframe.
+    
+    Parameters
+    ----------
+    conflict_data : geopandas.GeoDataFrame
+        DataFrame with H3 hexagon geometries and columns: 'nrEvents', 'nrFatalities', 'category', 'event_date'
+    category_list : list of str
+        List of category names to create separate map panels (e.g., ['Before', 'After'])
+    country_boundary : geopandas.GeoDataFrame
+        Country boundary (admin0) for masking areas outside the country
+    admin1_boundary : geopandas.GeoDataFrame, optional
+        Admin1 boundaries to overlay on the map
+    main_title : str, default='Conflict Patterns with Terrain'
+        Main title for the figure
+    basemap_choice : str, default='carto_light'
+        Basemap to use. Options: 'osm', 'carto_light', 'carto_dark'
+    basemap_alpha : float, default=0.5
+        Transparency of the basemap (0=invisible, 1=opaque)
+    hexagon_alpha : float, default=0.5
+        Transparency of the hexagons (0=invisible, 1=opaque). Lower values show more basemap terrain.
+    extraction_date : str, optional
+        Date string for source citation. If None, uses current date
+    date_ranges : dict, optional
+        Dictionary mapping category names to date range strings (e.g., {'Before': 'Nov 26, 2023 - Nov 27, 2024'}).
+        If None, will attempt to extract from 'event_date' column in data
+    bivariate_colors : dict, optional
+        Custom color scheme dictionary. If None, uses default purple-blue-red scheme
+    legend_size : float, default=0.24
+        Size of legend as fraction of figure (doubled for multi-panel layouts)
+    figsize_per_map : int, default=5
+        Figure width per map panel in inches
+    
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The matplotlib figure object
+    ax : list of matplotlib.axes.Axes
+        List of axes objects for each panel
+    
+    Examples
+    --------
+    >>> fig, ax = create_bivariate_map_with_basemap(
+    ...     conflict_data=conflict_daily_h3_mean,
+    ...     category_list=['Before Regime Change', 'After Regime Change'],
+    ...     country_boundary=adm0,
+    ...     admin1_boundary=syria_adm1,
+    ...     main_title="Conflict Patterns in Syria",
+    ...     basemap_choice='carto_light'
+    ... )
+    """
+    import contextily as ctx
+    from matplotlib.path import Path
+    from matplotlib.patches import PathPatch
+    from shapely.geometry import box
+    import matplotlib.font_manager as fm
+    import os
+    
+    # Set professional font - load Open Sans static fonts
+    open_sans_regular = os.path.expanduser("~/Library/Fonts/OpenSans-Regular.ttf")
+    open_sans_bold = os.path.expanduser("~/Library/Fonts/OpenSans-Bold.ttf")
+    
+    fonts_loaded = False
+    if os.path.exists(open_sans_regular) and os.path.exists(open_sans_bold):
+        try:
+            fm.fontManager.addfont(open_sans_regular)
+            fm.fontManager.addfont(open_sans_bold)
+            plt.rcParams['font.family'] = 'Open Sans'
+            fonts_loaded = True
+        except:
+            pass
+    
+    if not fonts_loaded:
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans']
+    
+    # Set default extraction date if not provided
+    if extraction_date is None:
+        extraction_date = datetime.now().strftime('%b %d, %Y')
+    
+    # Default bivariate color scheme (blue for events, red for fatalities)
+    # Rows (events): Low to High = lighter to darker blues
+    # Columns (fatalities): Low to High = lighter to darker reds
+    if bivariate_colors is None:
+        bivariate_colors = {
+            (1, 1): "#E8E8E8", (1, 2): "#E4ACAC", (1, 3): "#C85A5A",  # Low events
+            (2, 1): "#ACB8E5", (2, 2): "#AD9EA5", (2, 3): "#985356",  # Medium events
+            (3, 1): "#5698B9", (3, 2): "#627F8C", (3, 3): "#574249",  # High events
+        }
+    
+    # Get country boundaries
+    country_bounds = country_boundary.total_bounds
+    country_geom = country_boundary.union_all()
+    
+    # Create figure with subplots - use 16:9 aspect ratio (World Bank standard)
+    num_categories = len(category_list)
+    fig_height = (figsize_per_map * num_categories) * (9/16)
+    fig, ax = plt.subplots(1, num_categories, figsize=(figsize_per_map * num_categories, fig_height), dpi=150)
+    if num_categories == 1:
+        ax = [ax]
+    
+    # Calculate date ranges for each category from the data (if not provided)
+    if date_ranges is None:
+        date_ranges = {}
+        for category in category_list:
+            cat_data = conflict_data[conflict_data['category'] == category]
+            if 'event_date' in cat_data.columns and not cat_data['event_date'].isna().all():
+                min_date = cat_data['event_date'].min()
+                max_date = cat_data['event_date'].max()
+                date_ranges[category] = f"{min_date.strftime('%b %d, %Y')} - {max_date.strftime('%b %d, %Y')}"
+            else:
+                date_ranges[category] = ''
+    else:
+        # Ensure all categories have entries
+        for category in category_list:
+            if category not in date_ranges:
+                date_ranges[category] = ''
+    
+    # Add basemap and mask to each subplot
+    for idx, axis in enumerate(ax):
+        # Don't set facecolor to allow basemap colors to show through properly
+        axis.set_xlim(country_bounds[0], country_bounds[2])
+        axis.set_ylim(country_bounds[1], country_bounds[3])
+        
+        # Add basemap
+        try:
+            basemap_urls = {
+                'osm': ctx.providers.OpenStreetMap.Mapnik,
+                'carto_light': ctx.providers.CartoDB.Positron,
+                'carto_dark': ctx.providers.CartoDB.DarkMatter,
+            }
+            
+            # Check if basemap_choice is a custom URL or a predefined choice
+            if basemap_choice.startswith('http'):
+                # Custom tile URL provided
+                basemap_source = basemap_choice
+            else:
+                # Use predefined basemap
+                basemap_source = basemap_urls.get(basemap_choice, ctx.providers.CartoDB.Positron)
+            
+            ctx.add_basemap(axis, crs=country_boundary.crs, source=basemap_source, 
+                          alpha=basemap_alpha, zoom=8, zorder=-1)
+        except Exception as e:
+            print(f"⚠ Could not add basemap to map {idx + 1}: {e}")
+        
+        # Create mask for areas outside country
+        margin = 60.0
+        bbox = box(country_bounds[0] - margin, country_bounds[1] - margin, 
+                   country_bounds[2] + margin, country_bounds[3] + margin)
+        mask_geom = bbox.difference(country_geom)
+        
+        mask_patches = [mask_geom] if mask_geom.geom_type == 'Polygon' else list(mask_geom.geoms) if mask_geom.geom_type == 'MultiPolygon' else []
+        
+        for mask_poly in mask_patches:
+            if mask_poly.exterior is not None:
+                vertices, codes = [], []
+                ext_coords = list(mask_poly.exterior.coords)
+                vertices.extend(ext_coords)
+                codes.extend([Path.MOVETO] + [Path.LINETO] * (len(ext_coords) - 2) + [Path.CLOSEPOLY])
+                
+                for interior in mask_poly.interiors:
+                    int_coords = list(interior.coords)
+                    vertices.extend(int_coords)
+                    codes.extend([Path.MOVETO] + [Path.LINETO] * (len(int_coords) - 2) + [Path.CLOSEPOLY])
+                
+                path = Path(vertices, codes)
+                patch = PathPatch(path, facecolor='white', edgecolor='none', zorder=1, alpha=1.0)
+                axis.add_patch(patch)
+    
+    # Prepare bivariate data
+    plot_data = conflict_data.copy(deep=True)
+    events_data = plot_data['nrEvents'].dropna()
+    fatalities_data = plot_data['nrFatalities'].dropna()
+    
+    # Calculate quantiles
+    def create_unique_bins(data):
+        quantiles = [0, 0.33, 0.67, 1.0]
+        bins = data.quantile(quantiles).tolist()
+        for i in range(1, len(bins)):
+            if bins[i] <= bins[i-1]:
+                bins[i] = bins[i-1] + 0.000001
+        return bins
+    
+    events_bins = create_unique_bins(events_data)
+    fatalities_bins = create_unique_bins(fatalities_data)
+    
+    # Create categories
+    plot_data['events_category'] = pd.cut(plot_data['nrEvents'], bins=events_bins, 
+                                           labels=['Low', 'Medium', 'High'], include_lowest=True)
+    plot_data['fatalities_category'] = pd.cut(plot_data['nrFatalities'], bins=fatalities_bins,
+                                                labels=['Low', 'Medium', 'High'], include_lowest=True)
+    
+    # Create color dictionary with tuple keys for matplotlib
+    colors = {
+        ('Low', 'Low'): tuple(int(bivariate_colors[(1,1)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,),
+        ('Low', 'Medium'): tuple(int(bivariate_colors[(1,2)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,),
+        ('Low', 'High'): tuple(int(bivariate_colors[(1,3)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,),
+        ('Medium', 'Low'): tuple(int(bivariate_colors[(2,1)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,),
+        ('Medium', 'Medium'): tuple(int(bivariate_colors[(2,2)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,),
+        ('Medium', 'High'): tuple(int(bivariate_colors[(2,3)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,),
+        ('High', 'Low'): tuple(int(bivariate_colors[(3,1)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,),
+        ('High', 'Medium'): tuple(int(bivariate_colors[(3,2)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,),
+        ('High', 'High'): tuple(int(bivariate_colors[(3,3)].lstrip('#')[i:i+2], 16)/255 for i in (0, 2, 4)) + (1,)
+    }
+    
+    # Assign colors
+    plot_data['color'] = plot_data.apply(
+        lambda row: colors.get((row['events_category'], row['fatalities_category']), (0.8, 0.8, 0.8, 0.3)) 
+        if not pd.isna(row['events_category']) and not pd.isna(row['fatalities_category']) 
+        else (0.8, 0.8, 0.8, 0.3), axis=1
+    )
+    
+    # Plot data on each subplot
+    for idx, period in enumerate(category_list):
+        period_data = plot_data[plot_data['category'] == period]
+        
+        # Plot country border in black (behind H3 grids)
+        country_boundary.boundary.plot(ax=ax[idx], color='black', alpha=0.75, 
+                                      linewidth=1.5, zorder=14)
+        
+        # Plot hexagons
+        for _, row in period_data.iterrows():
+            if not pd.isna(row['color']):
+                patch = ax[idx].fill(*row.geometry.exterior.xy, color=row['color'], 
+                                    alpha=hexagon_alpha, edgecolor='none')
+                for p in patch:
+                    p.set_zorder(15)
+        
+        # Plot admin1 boundaries
+        if admin1_boundary is not None:
+            admin1_boundary.boundary.plot(ax=ax[idx], color='darkgrey', alpha=0.7, 
+                                         linewidth=0.8, zorder=20)
+        
+        # Add titles
+        ax[idx].set_title(period, fontsize=14, fontweight='bold', loc='left', pad=10)
+        if date_ranges.get(period):
+            ax[idx].text(0.02, 0.98, date_ranges[period], transform=ax[idx].transAxes, 
+                        fontsize=10, verticalalignment='top', color='#555')
+        
+        ax[idx].set_xticks([])
+        ax[idx].set_yticks([])
+        for spine in ax[idx].spines.values():
+            spine.set_visible(False)
+    
+    # Add legend
+    legend_ax = fig.add_axes([0.82, 0.08, legend_size, legend_size], frameon=True)
+    legend_ax.set_facecolor('white')
+    for spine in legend_ax.spines.values():
+        spine.set_color('#cccccc')
+        spine.set_linewidth(0.5)
+    
+    # Draw 3x3 color grid
+    bin_categories = ['Low', 'Medium', 'High']
+    cell_size = 1
+    for i, event_cat in enumerate(bin_categories):
+        for j, fatal_cat in enumerate(bin_categories):
+            legend_ax.add_patch(plt.Rectangle(
+                (j * cell_size, i * cell_size), cell_size, cell_size, 
+                facecolor=colors[(event_cat, fatal_cat)], 
+                edgecolor='white', linewidth=1
+            ))
+    
+    # Legend labels with arrows at the end
+    # Fatalities at bottom (horizontal axis)
+    legend_ax.text(1.5 * cell_size, -0.5 * cell_size, "Higher Fatalities →", 
+                   ha='center', va='center', fontsize=9,
+                   fontfamily='Open Sans')
+    
+    # Events on left (vertical axis) - arrow pointing up (use → which becomes ↑ when rotated)
+    legend_ax.text(-0.5 * cell_size, 1.5 * cell_size, "Higher Events →", 
+                   ha='center', va='center', fontsize=9, rotation=90,
+                   fontfamily='Open Sans')
+    
+    legend_ax.set_xlim(-1.5 * cell_size, 3.9 * cell_size)
+    legend_ax.set_ylim(-0.2 * cell_size, 4.5 * cell_size)
+    legend_ax.set_aspect('equal')
+    legend_ax.axis('off')
+    
+    # Add main title with Open Sans Bold
+    from matplotlib.font_manager import FontProperties
+    bold_font = FontProperties(family='Open Sans', weight='bold', size=14.5)
+    fig.text(0.05, 0.97, main_title, fontproperties=bold_font, ha='left')
+    
+    # Add source text with Open Sans
+    source_font = FontProperties(family='Open Sans', size=8)
+    fig.text(0.05, 0.02, f"Source: ACLED. Extracted {extraction_date}", 
+             fontproperties=source_font, color='#666', ha='left')
+    
+    # Adjust layout
+    fig.subplots_adjust(left=0.05, right=0.95, top=0.92, bottom=0.06)
+    
+    return fig, ax
