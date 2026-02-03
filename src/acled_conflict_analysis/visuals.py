@@ -19,34 +19,29 @@ Functions:
 
 Dependencies:
 ------------
-- bokeh: For creating static visualizations (bar charts and line plots)
+- wbpyplot: For creating World Bank styled visualizations (bar charts and line plots)
+- matplotlib: For data visualization
 - folium: For creating interactive maps
 - pandas: For data manipulation
 """
 
-from bokeh.plotting import figure, ColumnDataSource
-from bokeh.models import Legend, Span, Label, HoverTool
-from bokeh.palettes import Category10
-from bokeh.layouts import column
-from bokeh.core.validation import silence
-from bokeh.core.validation.warnings import EMPTY_LAYOUT
-import folium
-from folium.plugins import TimestampedGeoJson
-from folium import FeatureGroup
+from wbpyplot import wb_plot
 import pandas as pd
 import importlib.resources as pkg_resources
+from folium.plugins import TimestampedGeoJson
+from folium import FeatureGroup
+import folium
+import contextily as ctx
+import geopandas as gpd
 from datetime import datetime
-
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import os
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
-
-# Silence the EMPTY_LAYOUT warning from Bokeh
-silence(EMPTY_LAYOUT, True)
 
 # Standard color palette for visualization consistency
 COLOR_PALETTE = [
@@ -88,10 +83,11 @@ def get_bar_chart(
     color_code=None,
     category_value=None,
     events_dict=None,
-    width=86400000 * 1.5
+    width=None,
+    figsize=(10, 6)
 ):
     """
-    Create a bar chart to visualize time-series event data.
+    Create a bar chart to visualize time-series event data using wbpyplot.
     
     Parameters
     ----------
@@ -102,116 +98,98 @@ def get_bar_chart(
     source : str
         Source information to display at the bottom.
     subtitle : str, optional
-        Subtitle for the chart, displayed as the plot title.
+        Subtitle for the chart.
     measure : str, optional
         Column name for the measure to plot on y-axis, defaults to "nrEvents".
     category : str, optional
         Column name for filtering the data.
     color_code : str, optional
-        Color for the bars.
+        Color for the bars (defaults to World Bank blue).
     category_value : any, optional
         Value to filter by if category is specified.
     events_dict : dict, optional
         Dictionary of {datetime: label} for marking significant events.
-    width : int, optional
-        Width of bars in milliseconds, defaults to 1.5 days.
+    width : float, optional
+        Width of bars in days, defaults to automatic.
+    figsize : tuple, optional
+        Figure size (width, height) in inches.
         
     Returns
     -------
-    bokeh.layouts.column
-        A layout containing the title, bar chart, and source information.
+    matplotlib.figure.Figure
+        The matplotlib figure object.
     """
-    # Initialize the figure
-    p2 = figure(x_axis_type="datetime", width=750, height=400, toolbar_location="above")
-    p2.add_layout(Legend(), "right")
-
     # Filter data if category is provided
     if category:
         category_df = dataframe[dataframe[category] == category_value].copy()
         category_df.sort_values(by="event_date", inplace=True)
-        category_source = ColumnDataSource(category_df)
     else:
         category_df = dataframe.copy()
-        category_source = ColumnDataSource(dataframe)
-
-    # Plot the bars
-    p2.vbar(
-        x="event_date",
-        top=measure,
-        width=width,
-        source=category_source,
-        color=color_code,
+        category_df.sort_values(by="event_date", inplace=True)
+    
+    # Set default color if not provided
+    if color_code is None:
+        color_code = "#002244"  # World Bank blue
+    
+    # Create the plotting function with wb_plot decorator
+    @wb_plot(
+        title=title,
+        subtitle=subtitle,
+        note=[("Source:", source)]
     )
-
-    # Add HoverTool for interactivity
-    hover = HoverTool(tooltips=[
-        ("Date", "@event_date{%F}"),
-        (measure.replace('_', ' ').title(), f"@{measure}")
-    ], formatters={'@event_date': 'datetime'})
-    p2.add_tools(hover)
-
-    # Configure legend
-    p2.legend.click_policy = "hide"
-    p2.legend.location = "top_right"
-
-    # Set the subtitle as the title of the plot if it exists
-    if subtitle:
-        p2.title.text = subtitle
-
-    # Create title and subtitle text using separate figures
-    title_fig = figure(title=title, toolbar_location=None, width=750, height=40)
-    title_fig.title.align = "left"
-    title_fig.title.text_font_size = "14pt"
-    title_fig.border_fill_alpha = 0
-    title_fig.outline_line_color = None
-
-    sub_title_fig = figure(title=source, toolbar_location=None, width=750, height=80)
-    sub_title_fig.title.align = "left"
-    sub_title_fig.title.text_font_size = "10pt"
-    sub_title_fig.title.text_font_style = "normal"
-    sub_title_fig.border_fill_alpha = 0
-    sub_title_fig.outline_line_color = None
-
-    # Add event markers if provided
-    if events_dict:
-        used_y_positions = []
+    def plot_bars(axs):
+        ax = axs[0]
         
-        for index, (event_date, label) in enumerate(events_dict.items()):
-            # Add vertical line marker
-            span = Span(
-                location=event_date,
-                dimension="height",
-                line_color='#C6C6C6',
-                line_width=2,
-                line_dash=(4, 4)
-            )
-            p2.renderers.append(span)
-
-            # Determine label position to avoid overlap
-            base_y = max(category_df[measure])
-            y_position = base_y
-
-            while y_position in used_y_positions:
-                y_position -= max(category_df[measure])/20
-
-            used_y_positions.append(y_position)
-
-            # Add event label
-            event_label = Label(
-                x=event_date,
-                y=y_position,
-                text=label,
-                text_color="black",
-                text_font_size="10pt",
-                background_fill_color="grey",
-                background_fill_alpha=0.2,
-            )
-            p2.add_layout(event_label)
-
-    # Combine the title, plot, and subtitle into a single layout
-    layout = column(title_fig, p2, sub_title_fig)
-
-    return layout
+        # Calculate appropriate bar width based on date frequency
+        if len(category_df) > 1:
+            dates = pd.to_datetime(category_df['event_date'])
+            date_diff = (dates.iloc[1] - dates.iloc[0]).days
+            bar_width = max(0.8, date_diff * 0.8) if width is None else width
+        else:
+            bar_width = width if width else 1
+        
+        # Plot bars
+        bars = ax.bar(
+            category_df['event_date'],
+            category_df[measure],
+            width=bar_width,
+            color=color_code,
+            alpha=0.8
+        )
+        
+        # Remove value labels from bars (wbpyplot adds them automatically)
+        for text in ax.texts:
+            text.set_visible(False)
+        
+        # Set y-axis label
+        ax.set_ylabel(measure.replace('_', ' ').title())
+        
+        # Improve x-axis formatting for dates
+        import matplotlib.dates as mdates
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+        
+        # Add event markers if provided
+        if events_dict:
+            max_val = category_df[measure].max()
+            for event_date, label in events_dict.items():
+                ax.axvline(x=event_date, color='#C6C6C6', linestyle='--', linewidth=1.5, alpha=0.7)
+                ax.text(event_date, max_val * 0.95, label, rotation=90, 
+                       verticalalignment='top', fontsize=9, color='#555555')
+        
+        return ax
+    
+    # Call the plotting function
+    fig = plot_bars()
+    
+    # Remove value labels that wbpyplot adds automatically
+    if fig and hasattr(fig, 'axes'):
+        for ax in fig.axes:
+            for text in ax.texts[:]:  # Use slice to iterate over copy
+                text.remove()
+    
+    return fig
 
 
 def get_stacked_bar_chart(
@@ -225,11 +203,12 @@ def get_stacked_bar_chart(
     events_dict=None,
     category_column="event_type",
     measure="nrEvents",
-    width=1000,
-    height=400
+    width=None,
+    height=None,
+    figsize=(12, 6)
 ):
     """
-    Create a stacked bar chart for comparing categories over time.
+    Create a stacked bar chart for comparing categories over time using wbpyplot.
     
     Parameters
     ----------
@@ -240,13 +219,13 @@ def get_stacked_bar_chart(
     source_text : str
         Source information to display at the bottom.
     subtitle : str, optional
-        Subtitle for the chart, displayed as the plot title.
+        Subtitle for the chart.
     date_column : str, optional
         Column name for date values, defaults to "date".
     categories : list, optional
         List of category names to include in the stacked bars.
     colors : list, optional
-        List of colors for each category.
+        List of colors for each category (uses World Bank palette if None).
     events_dict : dict, optional
         Dictionary of {datetime: label} for marking significant events.
     category_column : str, optional
@@ -254,111 +233,95 @@ def get_stacked_bar_chart(
     measure : str, optional
         Column name for the measure to plot, defaults to "nrEvents".
     width : int, optional
-        Width of the chart in pixels, defaults to 1000.
+        Deprecated, use figsize instead.
     height : int, optional
-        Height of the chart in pixels, defaults to 400.
+        Deprecated, use figsize instead.
+    figsize : tuple, optional
+        Figure size (width, height) in inches.
         
     Returns
     -------
-    bokeh.layouts.column
-        A layout containing the title, stacked bar chart, and source information.
+    matplotlib.figure.Figure
+        The matplotlib figure object.
     """
     # Create pivot table for stacked bars
     df_pivot = dataframe.pivot_table(
         index=date_column, columns=category_column, values=measure, fill_value=0
     ).reset_index()
-
-    # Initialize the figure
-    p2 = figure(x_axis_type="datetime", width=width, height=height, toolbar_location="above")
-
-    # Convert dataframe to ColumnDataSource
-    source = ColumnDataSource(df_pivot)
-
-    # Stack bars
-    renderers = p2.vbar_stack(
-        stackers=categories,
-        x=date_column,
-        width=86400000 * 3,  # 3 days width
-        color=colors,
-        source=source,
+    
+    # Use default World Bank categorical colors if not provided
+    if colors is None:
+        from matplotlib import cm
+        colors = COLOR_PALETTE[:len(categories)] if categories else None
+    
+    # Create the plotting function with wb_plot decorator
+    @wb_plot(
+        title=title,
+        subtitle=subtitle,
+        note=[("Source:", source_text)],
+        palette="wb_categorical"
     )
-
-    # Add HoverTool for interactivity
-    hover = HoverTool(tooltips=[
-        ("Date", f"@{date_column}{{%F}}"),
-        ("Category", "$name"),
-        ("Value", "$~{0.0}")
-    ], formatters={f'@{date_column}': 'datetime'})
-    p2.add_tools(hover)
-
-    # Configure legend
-    legend = Legend(
-        items=[
-            (category, [renderer]) for category, renderer in zip(categories, renderers)
-        ],
-        location=(0, -30),
-    )
-    p2.add_layout(legend, "right")
-    p2.legend.click_policy = "hide"
-    p2.legend.location = "top_right"
-
-    if subtitle:
-        p2.title.text = subtitle
-
-    # Create title and subtitle text using separate figures
-    title_fig = figure(title=title, toolbar_location=None, width=width, height=40)
-    title_fig.title.align = "left"
-    title_fig.title.text_font_size = "14pt"
-    title_fig.border_fill_alpha = 0
-    title_fig.outline_line_color = None
-
-    sub_title_fig = figure(title=source_text, toolbar_location=None, width=width, height=80)
-    sub_title_fig.title.align = "left"
-    sub_title_fig.title.text_font_size = "10pt"
-    sub_title_fig.title.text_font_style = "normal"
-    sub_title_fig.border_fill_alpha = 0
-    sub_title_fig.outline_line_color = None
-
-    # Add event markers if provided
-    if events_dict:
-        used_y_positions = []
+    def plot_stacked_bars(axs):
+        ax = axs[0]
         
-        for index, (event_date, label) in enumerate(events_dict.items()):
-            # Add vertical line marker
-            span = Span(
-                location=event_date,
-                dimension="height",
-                line_color='#C6C6C6',
-                line_width=2,
-                line_dash=(4, 4)
-            )
-            p2.renderers.append(span)
-
-            # Determine label position to avoid overlap
-            base_y = dataframe[measure].max()
-            y_position = base_y
-
-            while y_position in used_y_positions:
-                y_position -= max(dataframe[measure])/20
-
-            used_y_positions.append(y_position)
-
-            # Add event label
-            event_label = Label(
-                x=event_date,
-                y=y_position,
-                text=label,
-                text_color="black",
-                text_font_size="10pt",
-                background_fill_color="grey",
-                background_fill_alpha=0.2,
-            )
-            p2.add_layout(event_label)
-
-    # Combine everything into a single layout
-    layout = column(title_fig, p2, sub_title_fig)
-
-    return layout
+        # Calculate appropriate bar width based on date frequency
+        if len(df_pivot) > 1:
+            dates = pd.to_datetime(df_pivot[date_column])
+            date_diff = (dates.iloc[1] - dates.iloc[0]).days
+            bar_width = max(0.8, date_diff * 0.8)  # 80% of the date interval
+        else:
+            bar_width = 1
+        
+        # Create stacked bar chart
+        bottom = np.zeros(len(df_pivot))
+        for i, cat in enumerate(categories):
+            if cat in df_pivot.columns:
+                color = colors[i] if colors else None
+                ax.bar(
+                    df_pivot[date_column],
+                    df_pivot[cat],
+                    bottom=bottom,
+                    label=cat,
+                    color=color,
+                    width=bar_width,
+                    alpha=0.85
+                )
+                bottom += df_pivot[cat].values
+        
+        # Remove value labels from bars (wbpyplot adds them automatically)
+        for text in ax.texts:
+            text.set_visible(False)
+        
+        # Set y-axis label
+        ax.set_ylabel(measure.replace('_', ' ').title())
+        ax.legend(loc='upper left', frameon=True, fancybox=False)
+        
+        # Improve x-axis formatting for dates
+        import matplotlib.dates as mdates
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+        
+        # Add event markers if provided
+        if events_dict:
+            max_val = bottom.max()
+            for event_date, label in events_dict.items():
+                ax.axvline(x=event_date, color='#C6C6C6', linestyle='--', linewidth=1.5, alpha=0.7)
+                ax.text(event_date, max_val * 0.95, label, rotation=90,
+                       verticalalignment='top', fontsize=9, color='#555555')
+        
+        return ax
+    
+    # Call the plotting function
+    fig = plot_stacked_bars()
+    
+    # Remove value labels that wbpyplot adds automatically
+    if fig and hasattr(fig, 'axes'):
+        for ax in fig.axes:
+            for text in ax.texts[:]:  # Use slice to iterate over copy
+                text.remove()
+    
+    return fig
 
 
 def get_line_plot(
@@ -370,11 +333,12 @@ def get_line_plot(
     category="DT",
     event_date="event_date",
     events_dict=None,
-    plot_width=900,
-    plot_height=550
+    plot_width=None,
+    plot_height=None,
+    figsize=(12, 7)
 ):
     """
-    Create a line plot for comparing trends across different regions or categories.
+    Create a line plot for comparing trends across different regions or categories using wbpyplot.
     
     Parameters
     ----------
@@ -385,7 +349,7 @@ def get_line_plot(
     source : str
         Source information to display at the bottom.
     subtitle : str, optional
-        Subtitle for the chart, combined with the main title.
+        Subtitle for the chart.
     measure : str, optional
         Column name for the measure to plot on y-axis, defaults to "conflictIndex".
     category : str, optional
@@ -395,220 +359,73 @@ def get_line_plot(
     events_dict : dict, optional
         Dictionary of {datetime: label} for marking significant events.
     plot_width : int, optional
-        Width of the main plot in pixels. Defaults to 900.
+        Deprecated, use figsize instead.
     plot_height : int, optional
-        Height of the main plot in pixels. Defaults to 550.
+        Deprecated, use figsize instead.
+    figsize : tuple, optional
+        Figure size (width, height) in inches.
         
     Returns
     -------
-    bokeh.plotting.figure
-        The Bokeh figure object containing the line plot, title, and source information.
+    matplotlib.figure.Figure
+        The matplotlib figure object containing the line plot.
     """
     # Ensure event_date column is datetime type
+    dataframe = dataframe.copy()
     dataframe[event_date] = pd.to_datetime(dataframe[event_date])
-
-    # Determine data range for Y-axis
-    valid_measure_data = dataframe[measure].dropna()
-    if not valid_measure_data.empty:
-        min_measure = valid_measure_data.min()
-        max_measure = valid_measure_data.max()
-    else:
-        min_measure, max_measure = 0, 1 # Default range if no data
-
-    # Calculate initial Y-axis padding for data
-    data_y_range_padding = (max_measure - min_measure) * 0.1 if max_measure != min_measure else 0.1
-    initial_y_start = min_measure - data_y_range_padding
-    initial_y_end = max_measure + data_y_range_padding
-
-    # Create the main plot figure
-    p2 = figure(
-        x_axis_type="datetime",
-        width=plot_width,
-        height=plot_height,
-        toolbar_location="above",
-        title_location="above",
-        background_fill_color="white",
-        background_fill_alpha=1.0, # Fully opaque white
-        y_range=(initial_y_start, initial_y_end)
-    )
-
-    # --- Unified Title Setup ---
-    full_title_text = title
-    if subtitle:
-        full_title_text = f"{title}\n{subtitle}"
-    p2.title.text = full_title_text
-    p2.title.align = "left"
-    p2.title.text_font_size = "16pt"
-    p2.title.text_font_style = "bold"
-    p2.title.text_color = "#333333"
-
-    # --- Axis Labels ---
-    p2.xaxis.axis_label = "Date"
-    p2.yaxis.axis_label = measure.replace('_', ' ').title()
-    p2.xaxis.axis_label_text_font_size = "12pt"
-    p2.yaxis.axis_label_text_font_size = "12pt"
-    p2.xaxis.major_label_text_font_size = "10pt"
-    p2.yaxis.major_label_text_font_size = "10pt"
-    p2.xaxis.axis_line_color = "gray"
-    p2.yaxis.axis_line_color = "gray"
-    p2.xaxis.major_tick_line_color = "gray"
-    p2.yaxis.major_tick_line_color = "gray"
-
-    # --- Grid Lines (Prettification) ---
-    p2.xgrid.grid_line_alpha = 0.3 # Subtle vertical grid lines
-    p2.ygrid.grid_line_alpha = 0.5 # Slightly more prominent horizontal grid lines
-    p2.xgrid.grid_line_dash = [6, 4]
-    p2.ygrid.grid_line_dash = [6, 4]
-
-    # Add HoverTool for interactivity
-    hover = HoverTool(tooltips=[
-        ("Date", "@{%s}{%%F}" % event_date),
-        (measure.replace('_', ' ').title(), f"@{measure}{{0.00}}"),
-        (category.replace('_', ' ').title(), f"@{category}")
-    ])
-    p2.add_tools(hover)
-
-    # Get unique categories to assign colors
+    
+    # Get unique categories
     unique_categories = dataframe[category].unique()
-    # Use Category10 palette, ensuring enough colors by cycling if more than 10 categories
-    colors = Category10[10] # Category10 has 10 distinct colors
-
-    # Create a line for each category
-    for id, adm2 in enumerate(unique_categories): # Iterate through unique categories
-        df_category = dataframe[dataframe[category] == adm2].copy()
-        df_category = df_category.sort_values(by=event_date).reset_index(drop=True)
-
-        if df_category.empty:
-            print(f"Warning: No data for category '{adm2}'. Skipping line plot.")
-            continue
-
-        plot_x, plot_y = df_category[event_date].values, df_category[measure].values
-        
-        # Create a ColumnDataSource for each line to ensure proper linking for hover and legend
-        source_category = ColumnDataSource(data={
-            event_date: plot_x,
-            measure: plot_y,
-            category: [str(adm2)] * len(plot_x) # Ensure category column is in source
-        })
-
-        p2.line(
-            x=event_date,
-            y=measure,
-            source=source_category,
-            line_width=2.5,
-            line_color=colors[id % len(colors)], # Assign color from Category10 palette
-            legend_label=str(adm2), # Set legend label for each line
-        )
-
-    # Configure legend
-    p2.legend.click_policy = "hide"
-    p2.legend.orientation = "vertical"
-    p2.legend.location = "top_left"
-    p2.legend.background_fill_alpha = 0.8
-    p2.legend.border_line_color = None
-
-    # Add event markers if provided
-    max_label_y_position = initial_y_end
-    if events_dict:
-        sorted_events = sorted(events_dict.items())
-
-        plot_y_min_current, plot_y_max_current = p2.y_range.start, p2.y_range.end
-        current_data_range = max_measure - min_measure
-        
-        approx_label_height_data_units = (plot_y_max_current - plot_y_min_current) * 0.04 
-        
-        label_starting_y = max_measure + (current_data_range * 0.20)
-        
-        occupied_y_intervals = [] 
-        
-        for index, (event_date_value, label_text) in enumerate(sorted_events):
-            span = Span(
-                location=event_date_value,
-                dimension="height",
-                line_color='#888888',
-                line_width=1.5,
-                line_dash="dashed",
-                line_alpha=0.7
-            )
-            p2.renderers.append(span)
-
-            proposed_y = label_starting_y
-            max_attempts = 30
-            attempt_count = 0
-            
-            while attempt_count < max_attempts:
-                label_y_start = proposed_y - (approx_label_height_data_units / 2)
-                label_y_end = proposed_y + (approx_label_height_data_units / 2)
-                
-                overlap = False
-                for occupied_start, occupied_end in occupied_y_intervals:
-                    if not (label_y_end < occupied_start or label_y_start > occupied_end):
-                        overlap = True
-                        break
-                
-                if not overlap:
-                    buffer_factor = 0.15 
-                    occupied_y_intervals.append(
-                        (label_y_start - approx_label_height_data_units * buffer_factor,
-                         label_y_end + approx_label_height_data_units * buffer_factor)
-                    )
-                    break 
-                else:
-                    proposed_y -= approx_label_height_data_units * 1.8 
-                    attempt_count += 1
-                    
-                    if proposed_y < p2.y_range.start + approx_label_height_data_units:
-                        break 
-
-            final_y_position = proposed_y 
-
-            if final_y_position > max_label_y_position:
-                max_label_y_position = final_y_position
-            
-            final_y_position = max(final_y_position, p2.y_range.start + approx_label_height_data_units/2)
-
-            event_label = Label(
-                x=event_date_value,
-                y=final_y_position,
-                x_offset=5,
-                y_offset=0,
-                text=label_text,
-                text_color="#555555",
-                text_font_size="9pt",
-                background_fill_color="#eeeeee",
-                background_fill_alpha=0.7,
-                border_line_color="#cccccc",
-                border_line_alpha=0.5,
-            )
-            p2.add_layout(event_label)
-        
-        final_top_buffer_for_labels = approx_label_height_data_units * 2 
-        
-        p2.y_range.end = max(initial_y_end, max_label_y_position + final_top_buffer_for_labels)
-
-    # --- Source Information as Label Annotation ---
-    # Place it at the bottom left of the plot area
-    source_label_x_pos = p2.x_range.start # Aligned with left axis
-    # The y-position should be just above the very bottom edge of the plot's data range
-    source_label_y_pos = p2.y_range.start + (p2.y_range.end - p2.y_range.start) * 0.005 # A tiny bit from bottom
-
-    source_label = Label(
-        x=source_label_x_pos,
-        y=source_label_y_pos,
-        x_units='data',
-        y_units='data',
-        text=f"Source: {source} (Generated: {datetime.now().strftime('%Y-%m-%d')})",
-        text_color="#888888",
-        text_font_size="8pt",
-        text_font_style="italic",
-        background_fill_alpha=0,
-        border_line_alpha=0,
-        x_offset=5,
-        y_offset=5
+    
+    # Use World Bank categorical colors
+    colors = COLOR_PALETTE[:len(unique_categories)]
+    
+    # Create the plotting function with wb_plot decorator
+    @wb_plot(
+        title=title,
+        subtitle=subtitle,
+        note=[("Source:", source)],
+        palette="wb_categorical"
     )
-    p2.add_layout(source_label)
-
-    return p2
+    def plot_lines(axs):
+        ax = axs[0]
+        
+        # Plot each category as a line
+        for idx, cat in enumerate(unique_categories):
+            df_category = dataframe[dataframe[category] == cat].copy()
+            df_category = df_category.sort_values(by=event_date).reset_index(drop=True)
+            
+            if df_category.empty:
+                print(f"Warning: No data for category '{cat}'. Skipping line plot.")
+                continue
+            
+            ax.plot(
+                df_category[event_date],
+                df_category[measure],
+                label=str(cat),
+                color=colors[idx % len(colors)],
+                linewidth=2.5,
+                alpha=0.85
+            )
+        
+        # Set y-axis label
+        ax.set_ylabel(measure.replace('_', ' ').title())
+        ax.legend(loc='upper left')
+        
+        # Add event markers if provided
+        if events_dict:
+            y_min, y_max = ax.get_ylim()
+            for event_date_value, label_text in events_dict.items():
+                ax.axvline(x=event_date_value, color='#888888', linestyle='--', linewidth=1.5, alpha=0.7)
+                ax.text(event_date_value, y_max * 0.95, label_text, rotation=90,
+                       verticalalignment='top', fontsize=9, color='#555555')
+        
+        return ax
+    
+    # Call the plotting function
+    fig = plot_lines()
+    
+    return fig
 
 
 
@@ -1541,7 +1358,7 @@ def create_bivariate_conflict_map(
 
     return fig, ax
 
-def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, cmap_name=None, custom_colors=None, figsize=None, subtitle=None, country_boundary=None, admin1_boundary=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, date_ranges=None, legend_title=None):
+def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, cmap_name=None, custom_colors=None, figsize=None, subtitle=None, country_boundary=None, admin1_boundary=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, date_ranges=None, legend_title=None, subplot_titles=None, custom_bins=None):
     """
     Plot H3 grids with color representing the specified measure divided into quartiles.
     Can create either a single map or multiple maps based on categories.
@@ -1576,6 +1393,16 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
         Dictionary mapping category names to date range strings (e.g., {'Before': 'Nov 26, 2023 - Nov 27, 2024'}).
     legend_title : str, optional
         Title for the legend. If None, no title is displayed.
+    subplot_titles : list, dict, or None, optional
+        Controls subplot titles. Options:
+        - None: Uses category names as titles (default behavior)
+        - List: Custom titles for each subplot (must match length of category_list)
+        - Dict: Maps category names to custom titles
+        - False or empty list []: No subplot titles displayed
+    custom_bins : list, optional
+        Custom bin edges for classification. Must have exactly 4 values (edges for 3 bins).
+        Example: [0, 10, 20, 30] creates bins [0-10), [10-20), [20-30].
+        If None, bins are calculated automatically using terciles.
     """
     import matplotlib.font_manager as fm
     import os
@@ -1635,7 +1462,53 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
             cmap = plt.colormaps['Blues']
 
     # Calculate quartiles and prepare data for plotting (globally across all categories)
-    bin_edges, plot_data_with_quartiles, norm = _calculate_h3_quartiles(daily_mean_gdf, measure)
+    if custom_bins is not None:
+        # Validate custom bins
+        if not isinstance(custom_bins, (list, tuple)) or len(custom_bins) != 4:
+            raise ValueError("custom_bins must be a list or tuple with exactly 4 values (bin edges)")
+        
+        # Ensure bins are strictly increasing
+        for i in range(1, len(custom_bins)):
+            if custom_bins[i] <= custom_bins[i-1]:
+                raise ValueError(f"custom_bins must be strictly increasing. Found {custom_bins[i]} <= {custom_bins[i-1]}")
+        
+        # Use custom bins to create quartiles
+        plot_data_with_quartiles = daily_mean_gdf.copy(deep=True)
+        quartile_categories = pd.cut(
+            plot_data_with_quartiles[measure],
+            bins=custom_bins,
+            labels=['Q1', 'Q2', 'Q3'],
+            include_lowest=True
+        )
+        plot_data_with_quartiles['quartile'] = quartile_categories.astype(str)
+        quartile_map = {'Q1': 0, 'Q2': 1, 'Q3': 2}
+        plot_data_with_quartiles['quartile_numeric'] = plot_data_with_quartiles['quartile'].map(quartile_map).fillna(-1)
+        norm = Normalize(vmin=0, vmax=2)
+        bin_edges = list(custom_bins)
+    else:
+        # Use automatic tercile calculation
+        bin_edges, plot_data_with_quartiles, norm = _calculate_h3_quartiles(daily_mean_gdf, measure)
+    
+    # Process subplot_titles parameter
+    subplot_title_map = {}
+    if subplot_titles is False or (isinstance(subplot_titles, list) and len(subplot_titles) == 0):
+        # No titles
+        for category in category_list:
+            subplot_title_map[category] = None
+    elif isinstance(subplot_titles, dict):
+        # Dictionary mapping categories to titles
+        subplot_title_map = subplot_titles
+    elif isinstance(subplot_titles, list):
+        # List of titles - must match length of category_list
+        if len(subplot_titles) != len(category_list):
+            raise ValueError(f"subplot_titles list length ({len(subplot_titles)}) must match category_list length ({len(category_list)})")
+        subplot_title_map = {cat: title for cat, title in zip(category_list, subplot_titles)}
+    elif subplot_titles is None:
+        # Default: use category names as titles
+        for category in category_list:
+            subplot_title_map[category] = category
+    else:
+        raise ValueError("subplot_titles must be None, False, a list, or a dict")
 
     # Plot each category
     for idx, category in enumerate(category_list):
@@ -1647,10 +1520,13 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
         else:
             category_data = plot_data_with_quartiles[plot_data_with_quartiles['category'] == category]
         
+        # Get subplot title for this category
+        subplot_title = subplot_title_map.get(category, category)
+        
         # Plot on this axis
         date_text = date_ranges.get(category, '') if date_ranges else ''
         #print(f"date text is '{date_text}' for category '{category}'")
-        _plot_h3_on_ax(current_ax, category_data, cmap, norm, country_boundary=country_boundary, admin1_boundary=admin1_boundary, subplot_title=category, date_text=date_text, subtitle_text=None, basemap_choice=basemap_choice, basemap_alpha=basemap_alpha, hexagon_alpha=hexagon_alpha, zoom=zoom)
+        _plot_h3_on_ax(current_ax, category_data, cmap, norm, country_boundary=country_boundary, admin1_boundary=admin1_boundary, subplot_title=subplot_title, date_text=date_text, subtitle_text=None, basemap_choice=basemap_choice, basemap_alpha=basemap_alpha, hexagon_alpha=hexagon_alpha, zoom=zoom)
     
     # Create custom legend elements
     legend_elements = []
