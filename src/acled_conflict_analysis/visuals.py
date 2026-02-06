@@ -42,35 +42,29 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
+import altair as alt
 
-# Standard color palette for visualization consistency
+# World Bank color palette for visualization consistency
+# Based on official World Bank Data Visualization Style Guide
+# https://worldbank.github.io/data-visualization-style-guide/colors
 COLOR_PALETTE = [
-    "#002244",  # Blue
-    "#F05023",  # Orange
-    "#2EB1C2",  # Red
-    "#009CA7",  # Teal
-    "#00AB51",  # Green
-    "#FDB714",  # Yellow
-    "#872B90",  # Purple
-    "#F78D28",  # Light Orange
-    "#00A996",  # Teal-Ish Green
-    "#A6192E",  # Dark Red
-    "#004C97",  # Navy Blue
-    "#FFD100",  # Bright Yellow
-    "#7A5195",  # Lavender Purple
-    "#EF5675",  # Coral Red
-    "#955196",  # Light Purple
-    "#003F5C",  # Dark Navy
-    "#FFA600",  # Bright Orange
-    "#58B947",  # Lime Green
-    "#8D230F",  # Brick Red
-    "#FFB400",  # Gold
-    "#24693D",  # Forest Green
-    "#CC2525",  # Bright Red
-    "#6A4C93",  # Violet
-    "#1C3144",  # Dark Slate Blue
-    "#C7EFCF",  # Mint Green
+    "#34A7F2",  # cat1 - Blue
+    "#FF9800",  # cat2 - Orange
+    "#664AB6",  # cat3 - Purple
+    "#4EC2C0",  # cat4 - Teal
+    "#F3578E",  # cat5 - Pink
+    "#081079",  # cat6 - Navy
+    "#0C7C68",  # cat7 - Green
+    "#AA0000",  # cat8 - Red
+    "#DDDA21",  # cat9 - Yellow
 ]
+
+# World Bank text colors
+WB_TEXT_DARK = "#111111"
+WB_TEXT_SUBTLE = "#666666"
+WB_GREY_300 = "#8A969F"
+WB_GREY_200 = "#CED4DE"
+WB_GREY_100 = "#EBEEF4"
 
 
 def get_bar_chart(
@@ -350,8 +344,10 @@ def get_line_plot(
         Source information to display at the bottom.
     subtitle : str, optional
         Subtitle for the chart.
-    measure : str, optional
-        Column name for the measure to plot on y-axis, defaults to "conflictIndex".
+    measure : str or list of str, optional
+        Column name(s) for the measure(s) to plot on y-axis. Can be a single string 
+        (defaults to "conflictIndex") or a list of strings for multiple subplots.
+        If a list is provided, creates a grid with 2 columns and as many rows as needed.
     category : str, optional
         Column name for grouping the data into different lines, defaults to "DT".
     event_date : str, optional
@@ -363,12 +359,12 @@ def get_line_plot(
     plot_height : int, optional
         Deprecated, use figsize instead.
     figsize : tuple, optional
-        Figure size (width, height) in inches.
+        Figure size (width, height) in inches. Automatically adjusted for multi-plot layouts.
         
     Returns
     -------
     matplotlib.figure.Figure
-        The matplotlib figure object containing the line plot.
+        The matplotlib figure object containing the line plot(s).
     """
     # Ensure event_date column is datetime type
     dataframe = dataframe.copy()
@@ -380,53 +376,1270 @@ def get_line_plot(
     # Use World Bank categorical colors
     colors = COLOR_PALETTE[:len(unique_categories)]
     
-    # Create the plotting function with wb_plot decorator
+    # Handle multiple measures
+    if isinstance(measure, list):
+        measures = measure
+        n_measures = len(measures)
+        n_cols = 2
+        n_rows = (n_measures + n_cols - 1) // n_cols  # Ceiling division
+        
+        # Create the plotting function with wb_plot decorator for multi-plot layout
+        # Calculate width and height in pixels (wb_plot uses pixels, not inches)
+        width_px = int(figsize[0] * 100 * 1.5)
+        height_px = int(figsize[1] * 100 * n_rows / 1.5)
+        
+        @wb_plot(
+            title=title,
+            subtitle=subtitle,
+            note=[("Source:", source)],
+            palette="wb_categorical",
+            nrows=n_rows,
+            ncols=n_cols,
+            width=width_px,
+            height=height_px
+        )
+        def plot_multi_lines(axs):
+            # Flatten axes array for easier iteration
+            if n_rows == 1 and n_cols == 1:
+                axes = [axs[0]]
+            else:
+                axes = axs
+            
+            # Plot each measure in a separate subplot
+            for idx, measure_col in enumerate(measures):
+                ax = axes[idx]
+                
+                # Plot each category as a line
+                for cat_idx, cat in enumerate(unique_categories):
+                    df_category = dataframe[dataframe[category] == cat].copy()
+                    df_category = df_category.sort_values(by=event_date).reset_index(drop=True)
+                    
+                    if df_category.empty:
+                        print(f"Warning: No data for category '{cat}'. Skipping line plot.")
+                        continue
+                    
+                    ax.plot(
+                        df_category[event_date],
+                        df_category[measure_col],
+                        label=str(cat),
+                        color=colors[cat_idx % len(colors)],
+                        linewidth=2.5,
+                        alpha=0.85
+                    )
+                
+                # Set labels and title
+                ax.set_ylabel(measure_col.replace('_', ' ').title())
+                ax.set_title(f"{measure_col.replace('_', ' ').title()}", fontsize=12, fontweight='bold')
+                ax.legend(loc='upper left')
+                
+                # Add event markers if provided
+                if events_dict:
+                    y_min, y_max = ax.get_ylim()
+                    for event_date_value, label_text in events_dict.items():
+                        ax.axvline(x=event_date_value, color='#888888', linestyle='--', linewidth=1.5, alpha=0.7)
+                        ax.text(event_date_value, y_max * 0.95, label_text, rotation=90,
+                               verticalalignment='top', fontsize=9, color='#555555')
+            
+            # Hide empty subplots
+            for idx in range(n_measures, len(axes)):
+                if idx < len(axes):
+                    axes[idx].set_visible(False)
+            
+            return axes
+        
+        # Call the plotting function
+        fig = plot_multi_lines()
+        
+        return fig
+    
+    else:
+        # Single measure - use original wbpyplot decorator approach
+        @wb_plot(
+            title=title,
+            subtitle=subtitle,
+            note=[("Source:", source)],
+            palette="wb_categorical"
+        )
+        def plot_lines(axs):
+            ax = axs[0]
+            
+            # Plot each category as a line
+            for idx, cat in enumerate(unique_categories):
+                df_category = dataframe[dataframe[category] == cat].copy()
+                df_category = df_category.sort_values(by=event_date).reset_index(drop=True)
+                
+                if df_category.empty:
+                    print(f"Warning: No data for category '{cat}'. Skipping line plot.")
+                    continue
+                
+                ax.plot(
+                    df_category[event_date],
+                    df_category[measure],
+                    label=str(cat),
+                    color=colors[idx % len(colors)],
+                    linewidth=2.5,
+                    alpha=0.85
+                )
+            
+            # Set y-axis label
+            ax.set_ylabel(measure.replace('_', ' ').title())
+            ax.legend(loc='upper left')
+            
+            # Add event markers if provided
+            if events_dict:
+                y_min, y_max = ax.get_ylim()
+                for event_date_value, label_text in events_dict.items():
+                    ax.axvline(x=event_date_value, color='#888888', linestyle='--', linewidth=1.5, alpha=0.7)
+                    ax.text(event_date_value, y_max * 0.95, label_text, rotation=90,
+                           verticalalignment='top', fontsize=9, color='#555555')
+            
+            return ax
+        
+        # Call the plotting function
+        fig = plot_lines()
+        
+        return fig
+
+
+def plot_conflict_trends_altair(
+    dataframe,
+    title,
+    source,
+    subtitle=None,
+    measures=["nrEvents", "nrFatalities"],
+    plot_type="bar",
+    category=None,
+    event_date="event_date",
+    show_labels=False,
+    date_filter=None,
+    width=600,
+    height=400,
+    bar_width_ratio=0.9,
+    share_y_axis=True,
+    show_y_title=False
+):
+    """
+    Create professional conflict trend visualizations using Altair with World Bank styling.
+    
+    This function creates side-by-side charts for multiple measures using Altair, with styling
+    similar to World Bank publications. Supports both bar and line charts.
+    
+    Parameters
+    ----------
+    dataframe : pandas.DataFrame
+        DataFrame containing time-series data.
+    title : str
+        Main title for the chart.
+    source : str
+        Source information to display.
+    subtitle : str, optional
+        Subtitle for the chart.
+    measures : list of str, optional
+        List of column names for measures to plot. Defaults to ["nrEvents", "nrFatalities"].
+    plot_type : str, optional
+        Type of plot: "bar" or "line". Defaults to "bar".
+    category : str, optional
+        Column name for grouping data (used for line plots with multiple lines).
+    event_date : str, optional
+        Column name for date values, defaults to "event_date".
+    show_labels : bool, optional
+        Whether to show value labels on bars. Defaults to False.
+    date_filter : str or datetime, optional
+        Filter data to dates >= this value.
+    width : int, optional
+        Width of each subplot in pixels. Defaults to 600.
+    height : int, optional
+        Height of each subplot in pixels. Defaults to 400.
+    bar_width_ratio : float, optional
+        Bar width as a ratio of the time interval (0-1). Defaults to 0.9.
+    share_y_axis : bool, optional
+        Whether to use the same y-axis scale for charts side-by-side. Defaults to True.
+    show_y_title : bool, optional
+        Whether to show y-axis title labels. Defaults to False.
+        
+    Returns
+    -------
+    altair.Chart
+        The Altair chart object containing the visualizations.
+        
+    Examples
+    --------
+    >>> chart = plot_conflict_trends_altair(
+    ...     conflict_yearly_national,
+    ...     "Annual Conflict Trends",
+    ...     "Source: ACLED. Accessed 2024-01-01",
+    ...     measures=["nrEvents", "nrFatalities"],
+    ...     plot_type="bar"
+    ... )
+    >>> chart.display()
+    """
+    df = dataframe.copy()
+    
+    # Apply date filter if provided
+    if date_filter:
+        df = df[df[event_date] >= date_filter]
+    
+    # Ensure date column is datetime
+    df[event_date] = pd.to_datetime(df[event_date])
+    
+    # Configure Altair to use Open Sans font globally for this chart
+    # Altair will use system fonts if available
+    alt.themes.register('wb_theme', lambda: {
+        'config': {
+            'font': 'Open Sans',
+            'title': {'font': 'Open Sans'},
+            'axis': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'legend': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'header': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'mark': {'font': 'Open Sans'},
+            'text': {'font': 'Open Sans'}
+        }
+    })
+    alt.themes.enable('wb_theme')
+    
+    # Create color mapping
+    color_map = {measures[i]: COLOR_PALETTE[i] for i in range(len(measures))}
+    
+    # Detect time frequency and determine appropriate formatting
+    dates_sorted = df[event_date].sort_values()
+    if len(dates_sorted) > 1:
+        time_diffs = dates_sorted.diff().dropna()
+        median_diff = time_diffs.median()
+        
+        # Determine frequency and format
+        date_range_years = (dates_sorted.max() - dates_sorted.min()).days / 365
+        
+        if median_diff.days <= 1:
+            # Daily data
+            time_format = '%b %d, %Y'
+            tick_interval = 'week'
+            tick_step = 2
+        elif median_diff.days <= 7:
+            # Weekly data
+            time_format = '%b %d'
+            tick_interval = 'week'
+            tick_step = 4
+        elif median_diff.days <= 31:
+            # Monthly data
+            time_format = '%b %Y'
+            tick_interval = 'month'
+            # Show labels smartly based on data range
+            if date_range_years > 5:
+                tick_step = 6  # Every 6 months
+            elif date_range_years > 3:
+                tick_step = 3  # Every 3 months
+            else:
+                tick_step = 1  # Show all months
+        elif median_diff.days <= 92:
+            # Quarterly data
+            time_format = 'Q%q %Y'
+            tick_interval = 'month'
+            tick_step = 3
+        else:
+            # Yearly or longer
+            time_format = '%Y'
+            tick_interval = 'year'
+            tick_step = 1
+        
+        # Calculate bar width as percentage of time unit
+        # bar_width_ratio should be 0-1, representing % of available space
+        bar_width_days = median_diff.days * min(bar_width_ratio, 1.0)
+    else:
+        time_format = '%Y'
+        tick_interval = 'year'
+        tick_step = 1
+        bar_width_days = 30
+    
+    # Calculate y-axis domain for shared scale across charts in same row
+    y_max = 0
+    if share_y_axis:
+        for measure in measures:
+            y_max = max(y_max, df[measure].max())
+    
+    charts = []
+    
+    for idx, measure in enumerate(measures):
+        # Prepare data
+        chart_df = df[[event_date, measure]].copy()
+        
+        # Format measure name for display
+        measure_title = measure.replace('_', ' ').replace('nr', 'Number of ').title()
+        
+        # Determine if this chart should share y-axis with another
+        # Charts in same row (i.e., side by side) should share y-axis
+        is_left_chart = idx % 2 == 0
+        use_shared_y = share_y_axis and len(measures) > 1 and (idx < len(measures) - 1 if is_left_chart else True)
+        
+        if plot_type == "bar":
+            # Create x-axis encoding with smart label filtering
+            x_axis_params = {
+                'title': None,
+                'labelAngle': 0,
+                'labelFontWeight': 'normal',
+                'format': time_format,
+                'labelFontSize': 11,
+                'tickCount': {'interval': tick_interval, 'step': tick_step}
+            }
+            
+            # Create bar chart with time-aware bar width
+            base = alt.Chart(chart_df).encode(
+                x=alt.X(f'{event_date}:T', 
+                       axis=alt.Axis(**x_axis_params),
+                       scale=alt.Scale(domain=[chart_df[event_date].min(), chart_df[event_date].max()])),
+                y=alt.Y(f'{measure}:Q', 
+                       axis=alt.Axis(title=measure_title if show_y_title else None, 
+                                    titleFontSize=11, 
+                                    labelFontSize=10, grid=True, gridOpacity=0.3),
+                       scale=alt.Scale(zero=True, domain=[0, y_max * 1.1] if use_shared_y else [0, chart_df[measure].max() * 1.1])),
+                color=alt.value(color_map[measure])
+            )
+            
+            # Use time-aware bar width
+            bars = base.mark_bar(
+                opacity=0.85,
+                width={'band': min(bar_width_ratio, 1.0)}
+            )
+            
+            if show_labels:
+                text = base.mark_text(
+                    align='center',
+                    baseline='bottom',
+                    dy=-5,
+                    fontSize=8
+                ).encode(
+                    text=alt.Text(f'{measure}:Q', format='.0f')
+                )
+                chart = (bars + text)
+            else:
+                chart = bars
+                
+        else:  # line chart
+            if category and category in df.columns:
+                # Multiple lines per category
+                chart_df = df[[event_date, measure, category]].copy()
+                chart = alt.Chart(chart_df).mark_line(
+                    strokeWidth=2.5,
+                    opacity=0.85
+                ).encode(
+                    x=alt.X(f'{event_date}:T', 
+                           axis=alt.Axis(title=None, labelAngle=0, labelFontWeight='normal',
+                                        labelFontSize=11)),
+                    y=alt.Y(f'{measure}:Q', 
+                           axis=alt.Axis(title=measure_title if show_y_title else None, 
+                                        titleFontSize=11, 
+                                        labelFontSize=10, grid=True, gridOpacity=0.3),
+                           scale=alt.Scale(zero=True, domain=[0, y_max * 1.1] if use_shared_y else [0, chart_df[measure].max() * 1.1])),
+                    color=alt.Color(f'{category}:N', 
+                                   scale=alt.Scale(range=COLOR_PALETTE[:df[category].nunique()]),
+                                   legend=alt.Legend(title=None, orient='top-left'))
+                )
+            else:
+                # Single line
+                chart = alt.Chart(chart_df).mark_line(
+                    strokeWidth=2.5,
+                    opacity=0.85,
+                    color=color_map[measure]
+                ).encode(
+                    x=alt.X(f'{event_date}:T', 
+                           axis=alt.Axis(title=None, labelAngle=0, labelFontWeight='normal',
+                                        labelFontSize=11)),
+                    y=alt.Y(f'{measure}:Q', 
+                           axis=alt.Axis(title=measure_title if show_y_title else None, 
+                                        titleFontSize=11, 
+                                        labelFontSize=10, grid=True, gridOpacity=0.3),
+                           scale=alt.Scale(zero=True, domain=[0, y_max * 1.1] if use_shared_y else [0, chart_df[measure].max() * 1.1]))
+                )
+        
+        # Add subtitle as title (don't apply configure here - will do after concat)
+        chart = chart.properties(
+            width=width,
+            height=height,
+            title=alt.TitleParams(
+                text=measure_title,
+                fontSize=13,
+                fontWeight='bold',
+                anchor='start',
+                align='left'
+            )
+        )
+        
+        charts.append(chart)
+    
+    # Combine charts side by side
+    if len(charts) == 1:
+        combined = charts[0]
+    else:
+        # Create rows with 2 columns
+        rows = []
+        for i in range(0, len(charts), 2):
+            if i + 1 < len(charts):
+                rows.append(alt.hconcat(charts[i], charts[i + 1], spacing=30))
+            else:
+                rows.append(charts[i])
+        combined = alt.vconcat(*rows, spacing=20) if len(rows) > 1 else rows[0]
+    
+    # Build title with optional subtitle
+    title_text = [title]
+    if subtitle:
+        title_text.append(subtitle)
+    
+    # Add overall title (no configuration yet)
+    final_chart = combined.properties(
+        title=alt.TitleParams(
+            text=title_text,
+            fontSize=16,
+            fontWeight='bold',
+            anchor='start',
+            align='left',
+            dy=-10,
+            subtitleFontSize=12,
+            subtitleFontWeight='normal'
+        )
+    )
+    
+    # Add source as a separate text annotation at the bottom
+    source_text = source if source.startswith("Source:") else f"Source: {source}"
+    source_chart = alt.Chart({'values': [{}]}).mark_text(
+        align='left',
+        baseline='top',
+        fontSize=10,
+        fontWeight='normal',
+        color=WB_TEXT_SUBTLE,
+        dx=-width * (2 if len(charts) > 1 else 1) / 2 - (15 if len(charts) > 1 else 0),
+        dy=10
+    ).encode(
+        text=alt.value(source_text)
+    ).properties(
+        width=width * (2 if len(charts) > 1 else 1) + (30 if len(charts) > 1 else 0),
+        height=20
+    )
+    
+    # Combine chart with source and apply all configurations at the end
+    final_with_source = alt.vconcat(
+        final_chart, 
+        source_chart, 
+        spacing=5
+    ).configure_view(
+        strokeWidth=0
+    ).configure_axis(
+        domainWidth=0,
+        gridColor=WB_GREY_100,
+        labelColor=WB_TEXT_SUBTLE,
+        titleColor=WB_TEXT_DARK
+    ).configure_title(
+        color=WB_TEXT_DARK,
+        subtitleColor=WB_TEXT_SUBTLE
+    )
+    
+    return final_with_source
+
+
+def plot_conflict_by_category_altair(
+    dataframe,
+    title,
+    source,
+    category_column,
+    measure="nrEvents",
+    subtitle=None,
+    plot_type="bar",
+    event_date="event_date",
+    date_filter=None,
+    width=350,
+    height=200,
+    bar_width_ratio=0.9,
+    n_cols=2,
+    color=None
+):
+    """
+    Create faceted conflict visualizations broken down by a categorical variable.
+    
+    This function creates separate subplots for each value in the specified category column,
+    using Altair with World Bank styling.
+    
+    Parameters
+    ----------
+    dataframe : pandas.DataFrame
+        DataFrame containing time-series data.
+    title : str
+        Main title for the chart.
+    source : str
+        Source information to display.
+    category_column : str
+        Column name for the categorical variable to facet by (e.g., 'event_type', 'region').
+    measure : str, optional
+        Column name for the measure to plot. Defaults to "nrEvents".
+    subtitle : str, optional
+        Subtitle for the chart.
+    plot_type : str, optional
+        Type of plot: "bar" or "line". Defaults to "bar".
+    event_date : str, optional
+        Column name for date values, defaults to "event_date".
+    date_filter : str or datetime, optional
+        Filter data to dates >= this value.
+    width : int, optional
+        Width of each subplot in pixels. Defaults to 350.
+    height : int, optional
+        Height of each subplot in pixels. Defaults to 200.
+    bar_width_ratio : float, optional
+        Bar width as a ratio of the time interval (0-1). Defaults to 0.9.
+    n_cols : int, optional
+        Number of columns in the grid layout. Defaults to 2.
+    color : str, optional
+        Color to use for the bars/lines. If None, defaults to World Bank blue (#34A7F2) 
+        for nrEvents and red (#AA0000) for nrFatalities.
+        
+    Returns
+    -------
+    altair.Chart
+        The Altair chart object containing the faceted visualizations.
+        
+    Examples
+    --------
+    >>> chart = plot_conflict_by_category_altair(
+    ...     conflict_event_type,
+    ...     "Conflict Events by Type",
+    ...     "ACLED. Accessed 2024-01-01",
+    ...     category_column="event_type",
+    ...     measure="nrEvents"
+    ... )
+    >>> chart.display()
+    """
+    df = dataframe.copy()
+    
+    # Apply date filter if provided
+    if date_filter:
+        df = df[df[event_date] >= date_filter]
+    
+    # Ensure date column is datetime
+    df[event_date] = pd.to_datetime(df[event_date])
+    
+    # Configure Altair to use Open Sans font
+    alt.themes.register('wb_theme', lambda: {
+        'config': {
+            'font': 'Open Sans',
+            'title': {'font': 'Open Sans'},
+            'axis': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'legend': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'header': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'mark': {'font': 'Open Sans'},
+            'text': {'font': 'Open Sans'}
+        }
+    })
+    alt.themes.enable('wb_theme')
+    
+    # Get unique categories - filter out any with no data
+    df = df.dropna(subset=[measure])  # Remove rows with NaN in measure
+    
+    # Filter out categories that have zero or all-NaN values
+    category_totals = df.groupby(category_column)[measure].sum().sort_values(ascending=False)
+    categories = category_totals[category_totals > 0].index.tolist()
+    n_categories = len(categories)
+    
+    if n_categories == 0:
+        raise ValueError(f"No valid data found for measure '{measure}'")
+    
+    # Filter dataframe to only include categories with data
+    df = df[df[category_column].isin(categories)]
+    
+    # Determine color based on measure if not specified
+    if color is None:
+        if 'events' in measure.lower():
+            color = '#34A7F2'  # World Bank blue for events
+        elif 'fatalit' in measure.lower():
+            color = '#AA0000'  # World Bank red for fatalities
+        else:
+            color = COLOR_PALETTE[0]  # Default to first color in palette
+    
+    # Detect time frequency for formatting and calculate bar width using unique dates
+    dates_sorted = df[event_date].drop_duplicates().sort_values()
+    if len(dates_sorted) > 1:
+        time_diffs = dates_sorted.diff().dropna()
+        median_diff = time_diffs.median()
+        date_range_years = (dates_sorted.max() - dates_sorted.min()).days / 365
+        
+        if median_diff.days <= 1:
+            time_format = '%b %d, %Y'
+            tick_interval = 'week'
+            tick_step = 2
+            bar_width_pixels = max(1, bar_width_ratio * 5)
+        elif median_diff.days <= 7:
+            time_format = '%b %d'
+            tick_interval = 'week'
+            tick_step = 4
+            bar_width_pixels = max(1, bar_width_ratio * 10)
+        elif median_diff.days <= 31:
+            time_format = '%b %Y'
+            tick_interval = 'month'
+            if date_range_years > 5:
+                tick_step = 6
+            elif date_range_years > 3:
+                tick_step = 3
+            else:
+                tick_step = 1
+            bar_width_pixels = max(1, bar_width_ratio * 20)
+        elif median_diff.days <= 92:
+            time_format = 'Q%q %Y'
+            tick_interval = 'month'
+            tick_step = 3
+            bar_width_pixels = max(1, bar_width_ratio * 40)
+        else:
+            time_format = '%Y'
+            tick_interval = 'year'
+            tick_step = 1
+            bar_width_pixels = max(1, bar_width_ratio * 60)
+    else:
+        time_format = '%Y'
+        tick_interval = 'year'
+        tick_step = 1
+        bar_width_pixels = max(1, bar_width_ratio * 60)
+    
+    # For yearly data, adjust tick step based on date range
+    if tick_interval == 'year' and len(dates_sorted) > 1:
+        date_range_years = (dates_sorted.max() - dates_sorted.min()).days / 365
+        if date_range_years > 20:
+            tick_step = 5
+        elif date_range_years > 10:
+            tick_step = 2
+        else:
+            tick_step = 1
+    
+    # Format measure name for display
+    measure_title = measure.replace('_', ' ').replace('nr', 'Number of ').title()
+    
+    if plot_type == "bar":
+        # Create bar chart with faceting
+        # Note: For temporal axes, use fixed pixel width based on time interval
+        base = alt.Chart(df).mark_bar(
+            opacity=0.85,
+            width=bar_width_pixels
+        ).encode(
+            x=alt.X(f'{event_date}:T',
+                   axis=alt.Axis(
+                       title=None,
+                       labelAngle=0,
+                       labelFontWeight='normal',
+                       format=time_format,
+                       labelFontSize=10,
+                       tickCount={'interval': tick_interval, 'step': tick_step}
+                   ),
+                   scale=alt.Scale(
+                       domain=[df[event_date].min(), df[event_date].max()],
+                       padding=10
+                   )),
+            y=alt.Y(f'{measure}:Q',
+                   axis=alt.Axis(
+                       title=measure_title,
+                       titleFontSize=10,
+                       labelFontSize=9,
+                       grid=True,
+                       gridOpacity=0.3
+                   ),
+                   scale=alt.Scale(zero=True)),
+            color=alt.value(color),
+            facet=alt.Facet(
+                f'{category_column}:N',
+                columns=n_cols,
+                header=alt.Header(
+                    title=None,
+                    labelFontSize=11,
+                    labelFontWeight='bold',
+                    labelAnchor='start'
+                )
+            )
+        ).properties(
+            width=width,
+            height=height
+        )
+    else:  # line chart
+        base = alt.Chart(df).mark_line(
+            strokeWidth=2.5,
+            opacity=0.85
+        ).encode(
+            x=alt.X(f'{event_date}:T',
+                   axis=alt.Axis(
+                       title=None,
+                       labelAngle=0,
+                       labelFontWeight='normal',
+                       format=time_format,
+                       labelFontSize=10,
+                       tickCount={'interval': tick_interval, 'step': tick_step}
+                   )),
+            y=alt.Y(f'{measure}:Q',
+                   axis=alt.Axis(
+                       title=measure_title,
+                       titleFontSize=10,
+                       labelFontSize=9,
+                       grid=True,
+                       gridOpacity=0.3
+                   ),
+                   scale=alt.Scale(zero=True)),
+            color=alt.value(color),
+            facet=alt.Facet(
+                f'{category_column}:N',
+                columns=n_cols,
+                header=alt.Header(
+                    title=None,
+                    labelFontSize=11,
+                    labelFontWeight='bold',
+                    labelAnchor='start'
+                )
+            )
+        ).properties(
+            width=width,
+            height=height
+        )
+    
+    # Build title with optional subtitle
+    title_text = [title]
+    if subtitle:
+        title_text.append(subtitle)
+    
+    # Add overall title
+    final_chart = base.properties(
+        title=alt.TitleParams(
+            text=title_text,
+            fontSize=16,
+            fontWeight='bold',
+            anchor='start',
+            align='left',
+            dy=-10,
+            subtitleFontSize=12,
+            subtitleFontWeight='normal'
+        )
+    ).resolve_scale(
+        y='independent',  # Each subplot gets its own y-scale
+        x='independent'   # Each subplot gets its own x-scale and labels
+    )
+    
+    # Add source as a separate text annotation at the bottom
+    source_text = source if source.startswith("Source:") else f"Source: {source}"
+    total_width = width * n_cols + 30 * (n_cols - 1)
+    
+    source_chart = alt.Chart({'values': [{}]}).mark_text(
+        align='left',
+        baseline='top',
+        fontSize=10,
+        fontWeight='normal',
+        color=WB_TEXT_SUBTLE,
+        dx=-total_width / 2,
+        dy=10
+    ).encode(
+        text=alt.value(source_text)
+    ).properties(
+        width=total_width,
+        height=20
+    )
+    
+    # Combine chart with source
+    final_with_source = alt.vconcat(
+        final_chart,
+        source_chart,
+        spacing=5
+    ).configure_view(
+        strokeWidth=0
+    ).configure_axis(
+        domainWidth=0,
+        gridColor=WB_GREY_100,
+        labelColor=WB_TEXT_SUBTLE,
+        titleColor=WB_TEXT_DARK
+    ).configure_title(
+        color=WB_TEXT_DARK,
+        subtitleColor=WB_TEXT_SUBTLE
+    ).configure_header(
+        labelColor=WB_TEXT_DARK
+    )
+    
+    return final_with_source
+
+
+def plot_lines_by_category_altair(
+    dataframe,
+    title,
+    source,
+    category_column,
+    measure="nrEvents",
+    subtitle=None,
+    event_date="event_date",
+    date_filter=None,
+    width=800,
+    height=400,
+    colors=None
+):
+    """
+    Create a single line chart with multiple lines, one for each category.
+    
+    This function creates a single plot with multiple colored lines representing
+    different categories, using Altair with World Bank styling.
+    
+    Parameters
+    ----------
+    dataframe : pandas.DataFrame
+        DataFrame containing time-series data.
+    title : str
+        Main title for the chart.
+    source : str
+        Source information to display.
+    category_column : str
+        Column name for the categorical variable (e.g., 'event_type', 'ADM1_EN').
+    measure : str, optional
+        Column name for the measure to plot. Defaults to "nrEvents".
+    subtitle : str, optional
+        Subtitle for the chart.
+    event_date : str, optional
+        Column name for date values, defaults to "event_date".
+    date_filter : str or datetime, optional
+        Filter data to dates >= this value.
+    width : int, optional
+        Width of the chart in pixels. Defaults to 800.
+    height : int, optional
+        Height of the chart in pixels. Defaults to 400.
+    colors : list, optional
+        List of colors to use for different categories. If None, uses World Bank palette.
+        
+    Returns
+    -------
+    altair.Chart
+        The Altair chart object containing the multi-line visualization.
+        
+    Examples
+    --------
+    >>> chart = plot_lines_by_category_altair(
+    ...     conflict_regional_yearly,
+    ...     "Fatalities by Region",
+    ...     "ACLED. Accessed 2024-01-01",
+    ...     category_column="ADM1_EN",
+    ...     measure="nrFatalities"
+    ... )
+    >>> chart.display()
+    """
+    df = dataframe.copy()
+    
+    # Apply date filter if provided
+    if date_filter:
+        df = df[df[event_date] >= date_filter]
+    
+    # Ensure date column is datetime
+    df[event_date] = pd.to_datetime(df[event_date])
+    
+    # Filter out rows with NaN in measure or category
+    df = df.dropna(subset=[measure, category_column])
+    
+    if len(df) == 0:
+        raise ValueError(f"No valid data found for measure '{measure}' and category '{category_column}'")
+    
+    # Configure Altair to use Open Sans font
+    alt.themes.register('wb_theme', lambda: {
+        'config': {
+            'font': 'Open Sans',
+            'title': {'font': 'Open Sans'},
+            'axis': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'legend': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'header': {'labelFont': 'Open Sans', 'titleFont': 'Open Sans'},
+            'mark': {'font': 'Open Sans'},
+            'text': {'font': 'Open Sans'}
+        }
+    })
+    alt.themes.enable('wb_theme')
+    
+    # Get unique categories
+    categories = sorted(df[category_column].unique())
+    n_categories = len(categories)
+    
+    # Use custom colors or default to World Bank palette
+    if colors is None:
+        colors = COLOR_PALETTE[:n_categories]
+    
+    # Detect time frequency for formatting using unique dates
+    dates_sorted = df[event_date].drop_duplicates().sort_values()
+    if len(dates_sorted) > 1:
+        time_diffs = dates_sorted.diff().dropna()
+        median_diff = time_diffs.median()
+        date_range_years = (dates_sorted.max() - dates_sorted.min()).days / 365
+        
+        if median_diff.days <= 1:
+            time_format = '%b %d, %Y'
+            tick_interval = 'week'
+            tick_step = 2
+        elif median_diff.days <= 7:
+            time_format = '%b %d'
+            tick_interval = 'week'
+            tick_step = 4
+        elif median_diff.days <= 31:
+            time_format = '%b %Y'
+            tick_interval = 'month'
+            if date_range_years > 5:
+                tick_step = 6
+            elif date_range_years > 3:
+                tick_step = 3
+            else:
+                tick_step = 1
+        elif median_diff.days <= 92:
+            time_format = 'Q%q %Y'
+            tick_interval = 'month'
+            tick_step = 3
+        else:
+            time_format = '%Y'
+            tick_interval = 'year'
+            tick_step = 1
+    else:
+        time_format = '%Y'
+        tick_interval = 'year'
+        tick_step = 1
+    
+    # For yearly data, adjust tick step based on date range
+    if tick_interval == 'year' and len(dates_sorted) > 1:
+        date_range_years = (dates_sorted.max() - dates_sorted.min()).days / 365
+        if date_range_years > 20:
+            tick_step = 5
+        elif date_range_years > 10:
+            tick_step = 2
+        else:
+            tick_step = 1
+    
+    # Format measure name for display
+    measure_title = measure.replace('_', ' ').replace('nr', 'Number of ').title()
+    
+    # Create line chart with multiple lines
+    lines = alt.Chart(df).mark_line(
+        strokeWidth=2.5,
+        opacity=0.85
+    ).encode(
+        x=alt.X(f'{event_date}:T',
+               axis=alt.Axis(
+                   title=None,
+                   labelAngle=0,
+                   labelFontWeight='normal',
+                   format=time_format,
+                   labelFontSize=11,
+                   tickCount={'interval': tick_interval, 'step': tick_step}
+               )),
+        y=alt.Y(f'{measure}:Q',
+               axis=alt.Axis(
+                   title=measure_title,
+                   titleFontSize=11,
+                   labelFontSize=10,
+                   grid=True,
+                   gridOpacity=0.3
+               ),
+               scale=alt.Scale(zero=True)),
+        color=alt.Color(
+            f'{category_column}:N',
+            scale=alt.Scale(range=colors),
+            legend=alt.Legend(
+                title=category_column.replace('_', ' ').title(),
+                orient='right',
+                labelFontSize=10,
+                titleFontSize=11
+            )
+        )
+    ).properties(
+        width=width,
+        height=height
+    )
+    
+    # Build title with optional subtitle
+    title_text = [title]
+    if subtitle:
+        title_text.append(subtitle)
+    
+    final_chart = lines.properties(
+        title=alt.TitleParams(
+            text=title_text,
+            fontSize=16,
+            fontWeight='bold',
+            anchor='start',
+            align='left',
+            dy=-10,
+            subtitleFontSize=12,
+            subtitleFontWeight='normal'
+        )
+    )
+    
+    # Add source as a separate text annotation at the bottom
+    source_text = source if source.startswith("Source:") else f"Source: {source}"
+    
+    source_chart = alt.Chart({'values': [{}]}).mark_text(
+        align='left',
+        baseline='top',
+        fontSize=10,
+        fontWeight='normal',
+        color=WB_TEXT_SUBTLE,
+        dx=-width / 2,
+        dy=10
+    ).encode(
+        text=alt.value(source_text)
+    ).properties(
+        width=width,
+        height=20
+    )
+    
+    # Combine chart with source
+    final_with_source = alt.vconcat(
+        final_chart,
+        source_chart,
+        spacing=5
+    ).configure_view(
+        strokeWidth=0
+    ).configure_axis(
+        domainWidth=0,
+        gridColor=WB_GREY_100,
+        labelColor=WB_TEXT_SUBTLE,
+        titleColor=WB_TEXT_DARK
+    ).configure_title(
+        color=WB_TEXT_DARK,
+        subtitleColor=WB_TEXT_SUBTLE
+    ).configure_legend(
+        labelColor=WB_TEXT_DARK,
+        titleColor=WB_TEXT_DARK
+    )
+    
+    return final_with_source
+
+
+def plot_conflict_trends(
+    dataframe,
+    title,
+    source,
+    subtitle=None,
+    measures=None,
+    plot_type="bar",
+    category=None,
+    event_date="event_date",
+    events_dict=None,
+    colors=None,
+    figsize=(14, 5),
+    date_filter=None,
+    show_labels=False
+):
+    """
+    Create side-by-side plots for multiple measures using wbpyplot styling.
+    Supports both line and bar plots with flexible time intervals.
+    
+    Parameters
+    ----------
+    dataframe : pandas.DataFrame
+        DataFrame containing time-series data.
+    title : str
+        Main title for the chart.
+    source : str
+        Source information to display at the bottom.
+    subtitle : str, optional
+        Subtitle for the chart.
+    measures : list of str, optional
+        List of column names for measures to plot. Defaults to ["nrEvents", "nrFatalities"].
+    plot_type : str, optional
+        Type of plot: "bar" or "line". Defaults to "bar".
+    category : str, optional
+        Column name for grouping data (used for line plots with multiple lines).
+    event_date : str, optional
+        Column name for date values, defaults to "event_date".
+    events_dict : dict, optional
+        Dictionary of {datetime: label} for marking significant events with vertical lines.
+    colors : list, optional
+        List of colors for each measure. If None, uses World Bank colors.
+    figsize : tuple, optional
+        Figure size (width, height) in inches.
+    date_filter : str, optional
+        Date string to filter data from (e.g., "2016-01-01").
+    show_labels : bool, optional
+        Whether to show value labels on bar charts. Defaults to False.
+        
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The matplotlib figure object containing the plots.
+        
+    Examples
+    --------
+    >>> # Bar chart with multiple measures
+    >>> fig = plot_conflict_trends(
+    ...     conflict_yearly_national,
+    ...     "Annual Conflict Trends",
+    ...     "Source: ACLED. Accessed 2024-01-01",
+    ...     measures=["nrEvents", "nrFatalities"],
+    ...     plot_type="bar"
+    ... )
+    
+    >>> # Line chart with categories
+    >>> fig = plot_conflict_trends(
+    ...     conflict_monthly,
+    ...     "Monthly Conflict Trends by Region",
+    ...     "Source: ACLED. Accessed 2024-01-01",
+    ...     measures=["nrEvents", "nrFatalities"],
+    ...     plot_type="line",
+    ...     category="admin1"
+    ... )
+    """
+    # Set default measures
+    if measures is None:
+        measures = ["nrEvents", "nrFatalities"]
+    
+    # Set default colors
+    if colors is None:
+        default_colors = {
+            "nrEvents": "#1AA1DB",
+            "nrFatalities": "#F28E2B"
+        }
+        colors = [default_colors.get(m, COLOR_PALETTE[i % len(COLOR_PALETTE)]) 
+                 for i, m in enumerate(measures)]
+    
+    # Prepare data
+    df = dataframe.copy()
+    df[event_date] = pd.to_datetime(df[event_date])
+    
+    # Apply date filter if provided
+    if date_filter:
+        df = df[df[event_date] >= date_filter]
+    
+    # Calculate layout
+    n_measures = len(measures)
+    n_cols = 2
+    n_rows = (n_measures + n_cols - 1) // n_cols
+    
+    # Convert figsize to width/height in pixels for wb_plot
+    width_px = int(figsize[0] * 100)
+    height_px = int(figsize[1] * 100)
+    
+    # Use wbpyplot decorator
     @wb_plot(
         title=title,
         subtitle=subtitle,
         note=[("Source:", source)],
-        palette="wb_categorical"
+        nrows=n_rows,
+        ncols=n_cols,
+        width=width_px,
+        height=height_px
     )
-    def plot_lines(axs):
-        ax = axs[0]
+    def plot_trends(axs):
+        # Handle single vs multiple axes
+        if n_rows == 1 and n_cols == 1:
+            axes = [axs[0]]
+        else:
+            axes = axs
         
-        # Plot each category as a line
-        for idx, cat in enumerate(unique_categories):
-            df_category = dataframe[dataframe[category] == cat].copy()
-            df_category = df_category.sort_values(by=event_date).reset_index(drop=True)
+        # Plot each measure
+        for idx, measure in enumerate(measures):
+            ax = axes[idx]
             
-            if df_category.empty:
-                print(f"Warning: No data for category '{cat}'. Skipping line plot.")
-                continue
+            if plot_type == "bar":
+                # Bar plot - calculate appropriate bar width based on time interval
+                dates = pd.to_datetime(df[event_date])
+                if len(dates) > 1:
+                    # Calculate the median time difference between consecutive dates
+                    time_diffs = dates.sort_values().diff().dropna()
+                    if len(time_diffs) > 0:
+                        median_diff = time_diffs.median()
+                        # Convert to days and use 80% of that as bar width
+                        bar_width = median_diff.days * 0.8
+                    else:
+                        bar_width = 30  # Default to 30 days
+                else:
+                    bar_width = 30
+                
+                bars = ax.bar(df[event_date], df[measure], width=bar_width, 
+                             color=colors[idx], edgecolor='none', alpha=0.85)
+                
+                # Add labels if requested
+                if show_labels:
+                    for bar in bars:
+                        height = bar.get_height()
+                        if height > 0:  # Only label non-zero bars
+                            ax.text(bar.get_x() + bar.get_width() / 2., height,
+                                   f'{int(height)}',
+                                   ha='center', va='bottom', 
+                                   fontsize=8, fontweight='normal')
+                
+            elif plot_type == "line":
+                # Line plot
+                if category and category in df.columns:
+                    # Multiple lines per category
+                    unique_categories = df[category].unique()
+                    cat_colors = COLOR_PALETTE[:len(unique_categories)]
+                    
+                    for cat_idx, cat in enumerate(unique_categories):
+                        df_cat = df[df[category] == cat].sort_values(event_date)
+                        ax.plot(
+                            df_cat[event_date],
+                            df_cat[measure],
+                            label=str(cat),
+                            color=cat_colors[cat_idx % len(cat_colors)],
+                            linewidth=2.5,
+                            alpha=0.85
+                        )
+                    ax.legend(loc='upper left', fontsize=9)
+                else:
+                    # Single line
+                    df_sorted = df.sort_values(event_date)
+                    ax.plot(
+                        df_sorted[event_date],
+                        df_sorted[measure],
+                        color=colors[idx],
+                        linewidth=2.5,
+                        alpha=0.85
+                    )
             
-            ax.plot(
-                df_category[event_date],
-                df_category[measure],
-                label=str(cat),
-                color=colors[idx % len(colors)],
-                linewidth=2.5,
-                alpha=0.85
-            )
+            # Set title and labels
+            measure_title = measure.replace('_', ' ').replace('nr', 'Number of ')
+            ax.set_title(measure_title.title(), fontsize=12, fontweight='bold', pad=10, loc='left')
+            ax.set_ylabel(measure_title.title(), fontsize=10)
+            
+            # Add event markers if provided
+            if events_dict:
+                y_min, y_max = ax.get_ylim()
+                for event_date_val, event_label in events_dict.items():
+                    ax.axvline(x=event_date_val, color='red', linestyle='--', 
+                             alpha=0.5, linewidth=1)
+                    # Optionally add label
+                    # ax.text(event_date_val, y_max * 0.95, event_label, 
+                    #        rotation=90, va='top', fontsize=8, alpha=0.7)
+            
+            # Style the plot
+            ax.grid(axis='y', alpha=0.3, linestyle='--')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            
+            # Don't set datavalues to None here - it breaks wbpyplot
+            # We'll remove labels after the decorator finishes
         
-        # Set y-axis label
-        ax.set_ylabel(measure.replace('_', ' ').title())
-        ax.legend(loc='upper left')
+        # Hide empty subplots
+        for idx in range(n_measures, len(axes)):
+            if idx < len(axes):
+                axes[idx].set_visible(False)
         
-        # Add event markers if provided
-        if events_dict:
-            y_min, y_max = ax.get_ylim()
-            for event_date_value, label_text in events_dict.items():
-                ax.axvline(x=event_date_value, color='#888888', linestyle='--', linewidth=1.5, alpha=0.7)
-                ax.text(event_date_value, y_max * 0.95, label_text, rotation=90,
-                       verticalalignment='top', fontsize=9, color='#555555')
-        
-        return ax
+        return axes[0].figure if len(axes) > 0 else None
     
-    # Call the plotting function
-    fig = plot_lines()
+    # Create and return the plot
+    fig = plot_trends()
+    
+    # Additional cleanup after wb_plot returns: remove bar labels and fix x-axis
+    if fig:
+        for ax in fig.axes:
+            if not ax.get_visible():
+                continue
+                
+            # Remove ALL bar value label text objects if not showing labels
+            if plot_type == "bar" and not show_labels:
+                # Remove all text objects on the axes (these are the bar labels)
+                # We need to be more aggressive here since wbpyplot adds them
+                for txt in list(ax.texts):
+                    txt.remove()
+            
+            # Fix x-axis formatting and limits
+            ax.xaxis.set_tick_params(labelbottom=True)
+            for label in ax.xaxis.get_ticklabels():
+                label.set_visible(True)
+                label.set_fontweight('normal')  # Remove bold
+            
+            # Set x-axis limits to match the actual data range
+            dates = pd.to_datetime(df[event_date])
+            if len(dates) > 0:
+                min_date = dates.min()
+                max_date = dates.max()
+                ax.set_xlim(min_date, max_date)
     
     return fig
-
 
 
 def load_country_centroids():
@@ -1110,7 +2323,7 @@ def _calculate_h3_quartiles(data_gdf, measure):
 
     return bin_edges, plot_data, norm
 
-def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, country_boundary=None, admin1_boundary=None, subplot_title=None, date_text=None, subtitle_text=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8):
+def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, country_boundary=None, admin1_boundary=None, subplot_title=None, date_text=None, subtitle_text=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, title_pad=10):
     """
     Plots H3 grid data on a given Matplotlib axes object.
 
@@ -1140,6 +2353,8 @@ def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, country_boundary=None, admin
         Transparency of the hexagons (0=invisible, 1=opaque). Default is 0.7.
     zoom : int, optional
         Zoom level for the basemap. Default is 8.
+    title_pad : float, optional
+        Padding between the subplot title and the map content. Default is 10.
     """
     from matplotlib.path import Path
     from matplotlib.patches import PathPatch
@@ -1227,7 +2442,7 @@ def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, country_boundary=None, admin
                 ax.add_patch(patch)
     
     if subplot_title:
-        ax.set_title(subplot_title, fontsize=14, fontweight='bold', loc='left', pad=10)
+        ax.set_title(subplot_title, fontsize=14, fontweight='bold', loc='left', pad=title_pad)
     if date_text:
         ax.text(0.02, 0.98, date_text, transform=ax.transAxes, 
                 fontsize=10, verticalalignment='top', color='#555', zorder=200)
@@ -1358,7 +2573,7 @@ def create_bivariate_conflict_map(
 
     return fig, ax
 
-def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, cmap_name=None, custom_colors=None, figsize=None, subtitle=None, country_boundary=None, admin1_boundary=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, date_ranges=None, legend_title=None, subplot_titles=None, custom_bins=None):
+def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, cmap_name=None, custom_colors=None, figsize=None, subtitle=None, country_boundary=None, admin1_boundary=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, date_ranges=None, legend_title=None, subplot_titles=None, custom_bins=None, source_text=None, title_pad=15):
     """
     Plot H3 grids with color representing the specified measure divided into quartiles.
     Can create either a single map or multiple maps based on categories.
@@ -1403,6 +2618,13 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
         Custom bin edges for classification. Must have exactly 4 values (edges for 3 bins).
         Example: [0, 10, 20, 30] creates bins [0-10), [10-20), [20-30].
         If None, bins are calculated automatically using terciles.
+    source_text : str, optional
+        Custom source text to display at the bottom of the figure.
+        If None, defaults to "Source: ACLED. Extracted {current_date}".
+        Set to empty string '' or False to hide source text.
+    title_pad : float, optional
+        Padding between subplot titles and map content in points. Default is 15.
+        Increase this value if titles appear too close to the maps.
     """
     import matplotlib.font_manager as fm
     import os
@@ -1526,7 +2748,7 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
         # Plot on this axis
         date_text = date_ranges.get(category, '') if date_ranges else ''
         #print(f"date text is '{date_text}' for category '{category}'")
-        _plot_h3_on_ax(current_ax, category_data, cmap, norm, country_boundary=country_boundary, admin1_boundary=admin1_boundary, subplot_title=subplot_title, date_text=date_text, subtitle_text=None, basemap_choice=basemap_choice, basemap_alpha=basemap_alpha, hexagon_alpha=hexagon_alpha, zoom=zoom)
+        _plot_h3_on_ax(current_ax, category_data, cmap, norm, country_boundary=country_boundary, admin1_boundary=admin1_boundary, subplot_title=subplot_title, date_text=date_text, subtitle_text=None, basemap_choice=basemap_choice, basemap_alpha=basemap_alpha, hexagon_alpha=hexagon_alpha, zoom=zoom, title_pad=title_pad)
     
     # Create custom legend elements
     legend_elements = []
@@ -1584,11 +2806,16 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
         fig.text(0.05, 0.93, subtitle, fontproperties=subtitle_font, ha='left', color='#555')
     
     # Add source text at bottom
-    from datetime import datetime
-    extraction_date = datetime.now().strftime('%b %d, %Y')
-    source_font = FontProperties(family='Open Sans', size=8)
-    fig.text(0.05, 0.02, f"Source: ACLED. Extracted {extraction_date}", 
-             fontproperties=source_font, color='#666', ha='left')
+    if source_text is not False and source_text != '':
+        from datetime import datetime
+        if source_text is None:
+            # Default source text
+            extraction_date = datetime.now().strftime('%b %d, %Y')
+            source_text = f"Source: ACLED. Extracted {extraction_date}"
+        
+        source_font = FontProperties(family='Open Sans', size=8)
+        fig.text(0.05, 0.02, source_text, 
+                 fontproperties=source_font, color='#666', ha='left')
     
     fig.subplots_adjust(left=0.05, right=0.95, top=0.92, bottom=0.06)
     
