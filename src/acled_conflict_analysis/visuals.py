@@ -1039,6 +1039,7 @@ def plot_conflict_by_category_altair(
             facet=alt.Facet(
                 f'{category_column}:N',
                 columns=n_cols,
+                sort=categories,
                 header=alt.Header(
                     title=None,
                     labelFontSize=11,
@@ -1077,6 +1078,7 @@ def plot_conflict_by_category_altair(
             facet=alt.Facet(
                 f'{category_column}:N',
                 columns=n_cols,
+                sort=categories,
                 header=alt.Header(
                     title=None,
                     labelFontSize=11,
@@ -2444,7 +2446,11 @@ def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, country_boundary=None, admin
     if subplot_title:
         ax.set_title(subplot_title, fontsize=14, fontweight='bold', loc='left', pad=title_pad)
     if date_text:
-        ax.text(0.02, 0.98, date_text, transform=ax.transAxes, 
+        # Calculate vertical position based on title_pad to avoid overlap
+        # Convert title_pad (in points) to axes coordinates
+        # Using a more aggressive scaling factor for better visibility
+        date_y_position = 0.98 - (title_pad / 150.0)
+        ax.text(0.02, date_y_position, date_text, transform=ax.transAxes, 
                 fontsize=10, verticalalignment='top', color='#555', zorder=200)
     
     if subtitle_text:
