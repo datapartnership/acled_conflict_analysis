@@ -196,6 +196,8 @@ def get_bar_chart(
     
     return fig
 
+        
+
 
 def get_stacked_bar_chart(
     dataframe,
@@ -216,6 +218,41 @@ def get_stacked_bar_chart(
     Create a stacked bar chart for comparing categories over time using wbpyplot.
     
     Parameters
+
+    # Build colormap now that `n_bins` is known. If `custom_colors` is provided
+    # use them directly when length == n_bins; otherwise interpolate a gradient
+    # from the provided anchor colors to produce `n_bins` shades.
+    from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+    if custom_colors is not None:
+        try:
+            if len(custom_colors) == n_bins:
+                cmap = ListedColormap(custom_colors)
+            else:
+                lin = LinearSegmentedColormap.from_list("custom_lin", custom_colors)
+                if n_bins == 1:
+                    sampled = [lin(0.0)]
+                else:
+                    sampled = [lin(i / (n_bins - 1)) for i in range(n_bins)]
+                cmap = ListedColormap(sampled)
+        except Exception as e:
+            print('Error building custom colormap, falling back to default. Error:', e)
+            custom_colors = None
+
+    if 'cmap' not in locals():
+        if cmap_name is None:
+            if measure == 'nrFatalities':
+                cmap_name = 'Reds'
+            elif measure == 'nrEvents':
+                cmap_name = 'Blues'
+            else:
+                cmap_name = 'Purples'
+
+        try:
+            cmap = plt.colormaps[cmap_name]
+        except KeyError:
+            print(f"Warning: Colormap '{cmap_name}' not found. Falling back to 'Blues'.")
+            cmap = plt.colormaps['Blues']
+
     ----------
     dataframe : pandas.DataFrame
         DataFrame containing event data.
@@ -2634,29 +2671,11 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
     fig, ax = plt.subplots(1, num_maps, figsize=figsize, squeeze=False)
     ax = ax[0]  # Get the first row since we're using 1 row
 
-    # Use custom colors or auto-select colormap based on measure
+    # Validate custom_colors (defer creation of colormap until n_bins is known)
     if custom_colors is not None:
-        from matplotlib.colors import ListedColormap
-        if len(custom_colors) != 3:
-            print(f"Warning: custom_colors must have exactly 3 colors. Got {len(custom_colors)}. Using default colormap.")
+        if not isinstance(custom_colors, (list, tuple)) or len(custom_colors) == 0:
+            print(f"Warning: custom_colors must be a non-empty list or tuple. Got {type(custom_colors)}. Using default colormap.")
             custom_colors = None
-    
-    if custom_colors is not None:
-        cmap = ListedColormap(custom_colors)
-    else:
-        if cmap_name is None:
-            if measure == 'nrFatalities':
-                cmap_name = 'Reds'
-            elif measure == 'nrEvents':
-                cmap_name = 'Blues'
-            else:
-                cmap_name = 'Purples'
-
-        try:
-            cmap = plt.colormaps[cmap_name]
-        except KeyError:
-            print(f"Warning: Colormap '{cmap_name}' not found. Falling back to 'Blues'.")
-            cmap = plt.colormaps['Blues']
 
     # Calculate quartiles and prepare data for plotting (globally across all categories)
     custom_bins_provided = False
@@ -2719,6 +2738,40 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
             subplot_title_map[category] = category
     else:
         raise ValueError("subplot_titles must be None, False, a list, or a dict")
+
+    # Build colormap now that `n_bins` is known. If `custom_colors` is provided
+    # use them directly when length == n_bins; otherwise interpolate a gradient
+    # from the provided anchor colors to produce `n_bins` shades.
+    from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+    if custom_colors is not None:
+        try:
+            if len(custom_colors) == n_bins:
+                cmap = ListedColormap(custom_colors)
+            else:
+                lin = LinearSegmentedColormap.from_list("custom_lin", custom_colors)
+                if n_bins == 1:
+                    sampled = [lin(0.0)]
+                else:
+                    sampled = [lin(i / (n_bins - 1)) for i in range(n_bins)]
+                cmap = ListedColormap(sampled)
+        except Exception as e:
+            print('Error building custom colormap, falling back to default. Error:', e)
+            custom_colors = None
+
+    if 'cmap' not in locals():
+        if cmap_name is None:
+            if measure == 'nrFatalities':
+                cmap_name = 'Reds'
+            elif measure == 'nrEvents':
+                cmap_name = 'Blues'
+            else:
+                cmap_name = 'Purples'
+
+        try:
+            cmap = plt.colormaps[cmap_name]
+        except KeyError:
+            print(f"Warning: Colormap '{cmap_name}' not found. Falling back to 'Blues'.")
+            cmap = plt.colormaps['Blues']
 
     # Plot each category
     for idx, category in enumerate(category_list):
