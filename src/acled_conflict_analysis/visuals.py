@@ -2659,7 +2659,9 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
             cmap = plt.colormaps['Blues']
 
     # Calculate quartiles and prepare data for plotting (globally across all categories)
+    custom_bins_provided = False
     if custom_bins is not None:
+        custom_bins_provided = True
         # Validate custom bins: must be a sequence with at least two edges
         if not isinstance(custom_bins, (list, tuple)) or len(custom_bins) < 2:
             raise ValueError("custom_bins must be a list or tuple with at least 2 values (bin edges)")
@@ -2672,16 +2674,19 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
         # Use custom bins to create categories (number of bins = len(edges)-1)
         plot_data_with_quartiles = daily_mean_gdf.copy(deep=True)
         n_bins = len(custom_bins) - 1
-        labels = [f'Q{i+1}' for i in range(n_bins)]
-        quartile_categories = pd.cut(
+
+        # Create categorical bins without 'Q' labels; preserve interval strings
+        cat = pd.cut(
             plot_data_with_quartiles[measure],
             bins=custom_bins,
-            labels=labels,
+            labels=None,
             include_lowest=True
         )
-        plot_data_with_quartiles['quartile'] = quartile_categories.astype(str)
-        quartile_map = {label: idx for idx, label in enumerate(labels)}
-        plot_data_with_quartiles['quartile_numeric'] = plot_data_with_quartiles['quartile'].map(quartile_map).fillna(-1)
+        # Interval strings for display (e.g. '0.00-5.00')
+        range_labels = [f"{custom_bins[i]:.2f}-{custom_bins[i+1]:.2f}" for i in range(n_bins)]
+        plot_data_with_quartiles['quartile'] = cat.astype(str)
+        # Numeric codes for colormapping: .cat.codes gives -1 for NaN
+        plot_data_with_quartiles['quartile_numeric'] = cat.cat.codes
         norm = Normalize(vmin=0, vmax=n_bins - 1)
         bin_edges = list(custom_bins)
     else:
@@ -2756,9 +2761,12 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
 
     for i in range(n_bins):
         try:
-            label = f'Q{i+1} ({bin_edges[i]:.2f}-{bin_edges[i+1]:.2f})'
+            if custom_bins_provided:
+                label = f'{bin_edges[i]:.2f}-{bin_edges[i+1]:.2f}'
+            else:
+                label = f'Q{i+1} ({bin_edges[i]:.2f}-{bin_edges[i+1]:.2f})'
         except IndexError:
-            label = f'Q{i+1}'
+            label = f'{i+1}'
 
         legend_elements.append(
             Patch(
