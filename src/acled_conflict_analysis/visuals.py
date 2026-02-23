@@ -43,6 +43,17 @@ from matplotlib.patches import Patch
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 import altair as alt
+from . import processing
+
+
+def deciles(data, measure):
+    """
+    Convenience wrapper that returns decile bin edges for `measure` from `data`.
+
+    Returns a list of 11 edges (10 bins).
+    """
+    bin_edges, _, _ = processing.calculate_deciles(data, measure, return_norm=True)
+    return bin_edges
 
 # World Bank color palette for visualization consistency
 # Based on official World Bank Data Visualization Style Guide
@@ -2257,6 +2268,8 @@ def _calculate_h3_quartiles(data_gdf, measure):
     """
     Calculates tercile bin edges and assigns tercile categories to the data.
     Uses qcut for true terciles (equal number of observations in each bin).
+    
+    This function now wraps the calculate_terciles utility function.
 
     Parameters:
     -----------
@@ -2270,59 +2283,19 @@ def _calculate_h3_quartiles(data_gdf, measure):
     tuple: (bin_edges, plot_data_with_quartiles, norm)
         - bin_edges (list): The calculated tercile bin edges.
         - plot_data_with_quartiles (GeoDataFrame): The input GeoDataFrame
-          with an added 'quartile' column and 'quartile_numeric' column.
+          with an added 'quartile' column and 'quantile_numeric' column.
         - norm (Normalize): Matplotlib Normalizer for consistent colormapping.
     """
-    plot_data = data_gdf.copy(deep=True)
-    non_nan_data = plot_data[plot_data[measure].notna()]
-
-    # Handle cases where there is no data or not enough unique values for 3 terciles
-    if non_nan_data.empty or non_nan_data[measure].nunique() < 3:
-        min_val = non_nan_data[measure].min() if not non_nan_data.empty else 0
-        max_val = non_nan_data[measure].max() if not non_nan_data.empty else 1
-        
-        if min_val == max_val: # Avoid division by zero for step if all values are the same
-            min_val -= 0.0001
-            max_val += 0.0001
-        
-        step = (max_val - min_val) / 3
-        bin_edges = [min_val + i * step for i in range(4)]
-        
-        quartile_categories = pd.cut(
-            plot_data[measure],
-            bins=bin_edges,
-            labels=['Q1', 'Q2', 'Q3'],
-            include_lowest=True
-        )
-    else:
-        # Calculate percentiles for terciles
-        q_values = [0, 0.33333, 0.66667, 1.0]
-        percentile_edges = non_nan_data[measure].quantile(q_values).tolist()
-        
-        # Ensure unique bin edges by adding tiny increments if needed
-        bin_edges = []
-        for i, edge in enumerate(percentile_edges):
-            if i == 0 or edge > bin_edges[-1]:
-                bin_edges.append(edge)
-            else:
-                # Add a tiny increment to make it unique
-                bin_edges.append(bin_edges[-1] + 1e-9)
-        
-        # Use cut to assign data to bins
-        quartile_categories = pd.cut(
-            plot_data[measure],
-            bins=bin_edges,
-            labels=['Q1', 'Q2', 'Q3'],
-            include_lowest=True
-        )
+    # Use the new utility function for calculating terciles
+    bin_edges, plot_data, norm = processing.calculate_terciles(data_gdf, measure, return_norm=True)
     
-    plot_data = plot_data.assign(quartile=quartile_categories.astype(str))
+    # Rename 'quantile' column to 'quartile' for backward compatibility
+    plot_data = plot_data.rename(columns={'quantile': 'quartile'})
     
-    quartile_map = {'Q1': 0, 'Q2': 1, 'Q3': 2}
-    plot_data['quartile_numeric'] = plot_data['quartile'].map(quartile_map).fillna(-1)
+    # Rename 'quantile_numeric' to 'quartile_numeric' for consistency
+    if 'quantile_numeric' in plot_data.columns:
+        plot_data = plot_data.rename(columns={'quantile_numeric': 'quartile_numeric'})
     
-    norm = Normalize(vmin=0, vmax=2) # 3 terciles, mapped to 0-2 for norm
-
     return bin_edges, plot_data, norm
 
 def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, country_boundary=None, admin1_boundary=None, subplot_title=None, date_text=None, subtitle_text=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, title_pad=10):
@@ -2446,11 +2419,7 @@ def _plot_h3_on_ax(ax, data_subset_gdf, cmap, norm, country_boundary=None, admin
     if subplot_title:
         ax.set_title(subplot_title, fontsize=14, fontweight='bold', loc='left', pad=title_pad)
     if date_text:
-        # Calculate vertical position based on title_pad to avoid overlap
-        # Convert title_pad (in points) to axes coordinates
-        # Using a more aggressive scaling factor for better visibility
-        date_y_position = 0.98 - (title_pad / 150.0)
-        ax.text(0.02, date_y_position, date_text, transform=ax.transAxes, 
+        ax.text(0.02, 0.98, date_text, transform=ax.transAxes, 
                 fontsize=10, verticalalignment='top', color='#555', zorder=200)
     
     if subtitle_text:
@@ -2691,32 +2660,40 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
 
     # Calculate quartiles and prepare data for plotting (globally across all categories)
     if custom_bins is not None:
-        # Validate custom bins
-        if not isinstance(custom_bins, (list, tuple)) or len(custom_bins) != 4:
-            raise ValueError("custom_bins must be a list or tuple with exactly 4 values (bin edges)")
-        
+        # Validate custom bins: must be a sequence with at least two edges
+        if not isinstance(custom_bins, (list, tuple)) or len(custom_bins) < 2:
+            raise ValueError("custom_bins must be a list or tuple with at least 2 values (bin edges)")
+
         # Ensure bins are strictly increasing
         for i in range(1, len(custom_bins)):
             if custom_bins[i] <= custom_bins[i-1]:
                 raise ValueError(f"custom_bins must be strictly increasing. Found {custom_bins[i]} <= {custom_bins[i-1]}")
-        
-        # Use custom bins to create quartiles
+
+        # Use custom bins to create categories (number of bins = len(edges)-1)
         plot_data_with_quartiles = daily_mean_gdf.copy(deep=True)
+        n_bins = len(custom_bins) - 1
+        labels = [f'Q{i+1}' for i in range(n_bins)]
         quartile_categories = pd.cut(
             plot_data_with_quartiles[measure],
             bins=custom_bins,
-            labels=['Q1', 'Q2', 'Q3'],
+            labels=labels,
             include_lowest=True
         )
         plot_data_with_quartiles['quartile'] = quartile_categories.astype(str)
-        quartile_map = {'Q1': 0, 'Q2': 1, 'Q3': 2}
+        quartile_map = {label: idx for idx, label in enumerate(labels)}
         plot_data_with_quartiles['quartile_numeric'] = plot_data_with_quartiles['quartile'].map(quartile_map).fillna(-1)
-        norm = Normalize(vmin=0, vmax=2)
+        norm = Normalize(vmin=0, vmax=n_bins - 1)
         bin_edges = list(custom_bins)
     else:
         # Use automatic tercile calculation
         bin_edges, plot_data_with_quartiles, norm = _calculate_h3_quartiles(daily_mean_gdf, measure)
     
+    # Ensure we have n_bins available (derived from bin_edges)
+    try:
+        n_bins
+    except NameError:
+        n_bins = len(bin_edges) - 1
+
     # Process subplot_titles parameter
     subplot_title_map = {}
     if subplot_titles is False or (isinstance(subplot_titles, list) and len(subplot_titles) == 0):
@@ -2756,40 +2733,38 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
         #print(f"date text is '{date_text}' for category '{category}'")
         _plot_h3_on_ax(current_ax, category_data, cmap, norm, country_boundary=country_boundary, admin1_boundary=admin1_boundary, subplot_title=subplot_title, date_text=date_text, subtitle_text=None, basemap_choice=basemap_choice, basemap_alpha=basemap_alpha, hexagon_alpha=hexagon_alpha, zoom=zoom, title_pad=title_pad)
     
-    # Create custom legend elements
+    # Create custom legend elements for n_bins
     legend_elements = []
-    colors_for_legend = [cmap(norm(i)) for i in range(3)]
-    
-    # Ensure bin_edges has enough elements for the labels
-    # This block ensures bin_edges is correctly padded for legend labels,
-    # especially in edge cases where unique values are less than 3.
-    if len(bin_edges) < 4:
-        # Calculate a reasonable 'step' if not explicitly defined from tercile calculation
+    colors_for_legend = [cmap(norm(i)) for i in range(n_bins)]
+
+    # Ensure bin_edges has enough elements for the labels (n_bins + 1 edges)
+    if len(bin_edges) < (n_bins + 1):
+        # Calculate a reasonable 'step' if not explicitly defined
         if len(bin_edges) > 1:
             step_val = bin_edges[1] - bin_edges[0]
-        else: # If bin_edges has 0 or 1 element, use a default step or infer from measure range
+        else:
             if not daily_mean_gdf[measure].empty:
                 data_range = daily_mean_gdf[measure].max() - daily_mean_gdf[measure].min()
-                step_val = data_range / 3 if data_range > 0 else 1
+                step_val = data_range / max(n_bins, 1) if data_range > 0 else 1
             else:
                 step_val = 1
-        
+
         last_val = bin_edges[-1] if bin_edges else 0
-        while len(bin_edges) < 4:
+        while len(bin_edges) < (n_bins + 1):
             bin_edges.append(last_val + step_val)
             last_val = bin_edges[-1]
-            
-    for i in range(3):
+
+    for i in range(n_bins):
         try:
             label = f'Q{i+1} ({bin_edges[i]:.2f}-{bin_edges[i+1]:.2f})'
         except IndexError:
             label = f'Q{i+1}'
-        
+
         legend_elements.append(
             Patch(
-                facecolor=colors_for_legend[i], 
-                edgecolor='none', 
-                alpha=0.7, 
+                facecolor=colors_for_legend[i],
+                edgecolor='none',
+                alpha=0.7,
                 label=label
             )
         )
