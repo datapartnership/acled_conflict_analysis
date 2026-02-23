@@ -2585,7 +2585,7 @@ def create_bivariate_conflict_map(
 
     return fig, ax
 
-def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, cmap_name=None, custom_colors=None, figsize=None, subtitle=None, country_boundary=None, admin1_boundary=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, date_ranges=None, legend_title=None, subplot_titles=None, custom_bins=None, source_text=None, title_pad=15):
+def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, cmap_name=None, custom_colors=None, figsize=None, subtitle=None, country_boundary=None, admin1_boundary=None, basemap_choice=None, basemap_alpha=0.5, hexagon_alpha=0.7, zoom=8, date_ranges=None, legend_title=None, subplot_titles=None, custom_bins=None, source_text=None, title_pad=15, legend_bbox=None, legend_loc='lower right', legend_outside=False):
     """
     Plot H3 grids with color representing the specified measure divided into quartiles.
     Can create either a single map or multiple maps based on categories.
@@ -2620,6 +2620,13 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
         Dictionary mapping category names to date range strings (e.g., {'Before': 'Nov 26, 2023 - Nov 27, 2024'}).
     legend_title : str, optional
         Title for the legend. If None, no title is displayed.
+    legend_bbox : tuple, optional
+        If provided, passed to `bbox_to_anchor` when creating the legend. Example: (1.02, 0.5)
+    legend_loc : str, optional
+        Legend location string (e.g. 'lower right', 'center left'). Passed to `loc`.
+    legend_outside : bool, optional
+        If True and `legend_bbox` places the legend outside the axes, the function will adjust
+        subplot margins so the legend does not overlap the map. Default is False.
     subplot_titles : list, dict, or None, optional
         Controls subplot titles. Options:
         - None: Uses category names as titles (default behavior)
@@ -2830,8 +2837,26 @@ def get_h3_maps(daily_mean_gdf, title, measure='nrEvents', category_list=None, c
             )
         )
     
-    legend = fig.legend(handles=legend_elements, loc='lower right', ncol=1, bbox_to_anchor=(1, 0), frameon=False, prop={'family': 'Open Sans', 'size': 10})
-    
+    # Place legend. Allow caller to specify bbox and location to avoid overlap.
+    legend_kwargs = dict(handles=legend_elements, ncol=1, frameon=False, prop={'family': 'Open Sans', 'size': 10})
+    # Use provided loc and bbox if supplied
+    legend_kwargs['loc'] = legend_loc if 'legend_loc' in locals() or True else 'lower right'
+    if legend_bbox is not None:
+        legend_kwargs['bbox_to_anchor'] = tuple(legend_bbox)
+    else:
+        legend_kwargs['bbox_to_anchor'] = (1, 0)
+
+    legend = fig.legend(**legend_kwargs)
+
+    # If legend is intended to be outside the axes, shrink plotting area to avoid overlap
+    try:
+        if legend_outside and legend_bbox is not None and float(legend_bbox[0]) >= 1.0:
+            # make room on the right
+            fig.subplots_adjust(left=0.05, right=0.78, top=0.92, bottom=0.06)
+    except Exception:
+        # fallback to default layout adjustments below
+        pass
+
     # Add legend title if provided with left alignment
     if legend_title:
         legend.set_title(legend_title, prop={'size': 10, 'weight': 'bold', 'family': 'Open Sans'})
